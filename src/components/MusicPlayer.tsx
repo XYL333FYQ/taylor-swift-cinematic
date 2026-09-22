@@ -196,11 +196,20 @@ export function MusicPlayer({ isOpen, language, requestedAlbumId, onOpen, onClos
               <div className="music-queue">
                 {selectedAlbum && (
                   <div className="music-record-heading">
-                    <img src={selectedAlbum.image} alt="" />
+                    <div
+                      className={`vinyl-record ${isPlaying ? 'is-spinning' : ''}`}
+                      role="img"
+                      aria-label={zh ? `${albumLabel} 黑胶唱片` : `${albumLabel} vinyl record`}
+                    >
+                      <div className="vinyl-record-label">
+                        <img src={selectedAlbum.image} alt="" />
+                      </div>
+                      <span className="vinyl-record-hole" aria-hidden="true" />
+                    </div>
                     <div>
                       <p className="section-kicker">{selectedAlbum.year} · {zh ? '专辑' : 'RECORD'}</p>
                       <h3>{albumLabel}</h3>
-                      <p>{selectedAlbum.tracks.length ? `${selectedAlbum.tracks.length} ${zh ? '首已登记' : 'tracks ready'}` : (zh ? '等待放入 MP3' : 'Waiting for MP3 files')}</p>
+                      <p>{selectedAlbum.tracks.length ? `${selectedAlbum.tracks.length} ${zh ? '首已登记 · 33⅓ RPM' : 'tracks ready · 33⅓ RPM'}` : (zh ? '等待放入 MP3' : 'Waiting for MP3 files')}</p>
                     </div>
                   </div>
                 )}
