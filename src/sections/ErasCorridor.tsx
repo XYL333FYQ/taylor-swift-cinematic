@@ -11,9 +11,10 @@ if (typeof window !== 'undefined') {
 interface ErasCorridorProps {
   copy: SiteCopy['erasCorridor'];
   language: Language;
+  onPlayAlbum: (albumId: string) => void;
 }
 
-export function ErasCorridor({ copy, language }: ErasCorridorProps) {
+export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps) {
   const containerRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const bgHueRef = useRef<HTMLDivElement>(null);
@@ -217,6 +218,11 @@ export function ErasCorridor({ copy, language }: ErasCorridorProps) {
                   <span className="truncate max-w-[85%]">{era.quote[language]}</span>
                   <span className="text-white/30 text-xs">↗</span>
                 </div>
+
+                <button type="button" className="era-play-button" onClick={() => onPlayAlbum(era.id)}>
+                  <span>{language === 'zh' ? '在播放器中打开' : 'OPEN IN PLAYER'}</span>
+                  <span aria-hidden="true">▶</span>
+                </button>
               </div>
 
               {/* Luminous accent underline */}

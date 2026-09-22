@@ -5,10 +5,11 @@ import { ambientSound } from '@/lib/audio/ambient';
 interface NavigationProps {
   language: Language;
   onToggleLanguage: () => void;
+  onOpenMusic: () => void;
   brandText: string;
 }
 
-export function Navigation({ language, onToggleLanguage, brandText }: NavigationProps) {
+export function Navigation({ language, onToggleLanguage, onOpenMusic, brandText }: NavigationProps) {
   const [isAudioActive, setIsAudioActive] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
 
@@ -51,11 +52,19 @@ export function Navigation({ language, onToggleLanguage, brandText }: Navigation
       </div>
 
       <nav className="chapter-nav" aria-label={language === 'zh' ? '章节导航' : 'Chapters'}>
-        <a href="#journey">{language === 'zh' ? '那些歌' : 'The songs'}</a>
+        <button type="button" onClick={onOpenMusic}>{language === 'zh' ? '音乐' : 'The songs'}</button>
         <a href="#archive">{language === 'zh' ? '唱片架' : 'The records'}</a>
       </nav>
       {/* Right controls: Sound + Language */}
       <div className="pointer-events-auto flex items-center gap-3 md:gap-4">
+        <button
+          type="button"
+          className="mobile-music-trigger md:hidden"
+          onClick={onOpenMusic}
+          aria-label={language === 'zh' ? '打开音乐播放器' : 'Open music player'}
+        >
+          ♫
+        </button>
         {/* Audio Toggle */}
         <button
           type="button"

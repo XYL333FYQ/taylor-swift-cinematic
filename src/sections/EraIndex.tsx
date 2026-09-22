@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import { ERAS } from '@/data/eras';
 import type { Language } from '@/data/i18n';
 
-export function EraIndex({ language }: { language: Language }) {
+export function EraIndex({ language, onPlayAlbum }: { language: Language; onPlayAlbum: (albumId: string) => void }) {
   const [selected, setSelected] = useState(0);
   const era = ERAS[selected];
   const zh = language === 'zh';
@@ -13,7 +13,7 @@ export function EraIndex({ language }: { language: Language }) {
         <div className="era-selector" role="group" aria-label={zh ? '选择时代' : 'Choose an era'}>{ERAS.map((item, i) => <button key={item.id} aria-pressed={selected === i} onClick={() => setSelected(i)} className={selected === i ? 'selected' : ''}><span>{item.number}</span><span>{item.name.en}</span><small>{item.year}</small><span aria-hidden="true">↗</span></button>)}</div>
         <article className="index-feature" aria-live="polite" aria-atomic="true">
           <div className="index-photo" key={era.id}><img src={era.image} alt={`Taylor Swift · ${era.name.en}`} loading="lazy" /><span>{era.year}</span></div>
-          <div className="index-details"><p className="section-kicker">CHAPTER {era.number} / 12</p><h3>{era.name.en}</h3><p>{era.description[language]}</p><div className="index-facts"><span>{era.stats.tracks} {zh ? '首曲目' : 'TRACKS'}{era.id === 'ttpd' ? ' · THE ANTHOLOGY' : ''}</span><span>{era.stats.genre[language]}</span></div></div>
+           <div className="index-details"><p className="section-kicker">CHAPTER {era.number} / 12</p><h3>{era.name.en}</h3><p>{era.description[language]}</p><div className="index-facts"><span>{era.stats.tracks} {zh ? '首曲目' : 'TRACKS'}{era.id === 'ttpd' ? ' · THE ANTHOLOGY' : ''}</span><span>{era.stats.genre[language]}</span></div><button type="button" className="index-play-button" onClick={() => onPlayAlbum(era.id)}><span>{zh ? '打开播放器' : 'OPEN PLAYER'}</span><span aria-hidden="true">▶</span></button></div>
         </article>
       </div>
     </section>

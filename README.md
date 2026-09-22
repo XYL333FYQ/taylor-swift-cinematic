@@ -8,7 +8,7 @@
 
 这个项目不是一个普通的专辑列表，而是一条连续的互动叙事：从黑暗中的序幕开始，经过 3D 圆柱回廊、无缝传送门和横向时代长廊，最后在焦点时代与尾声页面结束。
 
-页面默认使用英文，也支持中文切换。语言偏好会保存在浏览器的 localStorage 中；声音默认关闭，用户可以主动开启由 Web Audio API 实时合成的环境氛围声。
+页面默认使用英文，也支持中文切换。语言偏好会保存在浏览器的 localStorage 中；声音默认关闭，用户可以主动开启由 Web Audio API 实时合成的环境氛围声。项目也预留了本地 MP3 播放器，歌曲放入 `public/audio/` 并登记到 `src/data/music.ts` 后即可从主界面音乐入口播放。
 
 ## 体验结构
 
@@ -25,7 +25,7 @@
 - OGL/WebGL 3D 圆柱、粒子流光和着色器效果
 - GSAP + ScrollTrigger 驱动的滚动叙事和镜头运动
 - 英文 / 中文双语切换，并自动同步页面语言与标题
-- 原生 Web Audio API 环境声，不依赖外部音频文件
+- 原生 Web Audio API 环境声，以及可选的本地 MP3 播放器
 - 响应式排版、懒加载图片、加载动画和胶片颗粒层
 - 适合部署到 Vercel、Netlify、Cloudflare Pages 等静态托管平台
 
@@ -47,13 +47,16 @@ src/
 ├── components/       # 导航、加载动画、胶片颗粒层
 ├── sections/         # Hero、3D 圆柱、传送门、时代长廊、焦点和尾声
 ├── data/             # 12 个时代的数据与双语文案
+├── data/music.ts     # 本地 MP3 的专辑 / 歌曲目录接口
 ├── lib/audio/        # Web Audio 环境声合成器
+├── components/MusicPlayer.tsx  # 专辑选择、播放控制和进度条
 ├── lib/ogl/          # 圆柱几何体、纹理和着色器工具
 ├── App.tsx           # 页面主编排
 └── main.tsx          # React 入口
 
 public/
 ├── img/taylor/       # 当前页面使用的时代与舞台图片
+├── audio/            # 用户自行放入、并在 src/data/music.ts 登记的 MP3
 ├── taylor-*.{png,ico,svg}  # 网站图标
 └── vercel.json       # Vercel 静态路由配置
 ~~~
@@ -79,7 +82,7 @@ pnpm lint
 pnpm preview
 ~~~
 
-生产构建输出到 dist/，可以直接交给支持静态站点的托管平台。部署时请使用仓库中的 pnpm-lock.yaml，以保证依赖版本一致。
+生产构建输出到 dist/，可以直接交给支持静态站点的托管平台。部署时请使用仓库中的 pnpm-lock.yaml，以保证依赖版本一致。MP3 目录的放置方式和登记示例见 [public/audio/README.md](./public/audio/README.md)。
 
 ## 素材与版权说明
 
@@ -87,6 +90,7 @@ pnpm preview
 - 图片、Taylor Swift 的姓名与形象、专辑名称、商标以及歌词/引用内容均归各自权利人所有。本仓库不代表获得了这些素材的商业使用授权。
 - 本项目仅用于个人学习、前端实验和非商业粉丝展示。未经权利人许可，请不要将图片、品牌元素或页面内容用于商业项目。
 - 仓库中的页面代码、视觉实现和音频合成逻辑属于本项目的原创部分；除非另有明确说明，公开仓库不等于授予第三方复制或再发布全部素材的许可。
+- 仓库不附带 Taylor Swift 的商业录音；请只放入你拥有使用权的音频文件，并确认静态托管和公开访问的版权合规性。
 
 ## 开发说明
 
