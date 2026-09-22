@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-cinzel: 'Cinzel', Georgia, serif;
+  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', 'PingFang SC', serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: auto;
+    background-color: #050505;
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: #050505;
+    color: #f6f4f0;
+    font-family: var(--font-serif);
+    overflow-x: hidden;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+@keyframes loader-drift {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
