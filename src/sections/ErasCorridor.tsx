@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ERAS, type EraData } from '@/data/eras';
@@ -6,6 +6,36 @@ import type { Language, SiteCopy } from '@/data/i18n';
 
 if (typeof window !== 'undefined') {
   gsap.registerPlugin(ScrollTrigger);
+}
+
+function getClosestEraIndex(container: HTMLElement, track: HTMLElement) {
+  const centerX = container.getBoundingClientRect().left + container.clientWidth / 2;
+  const cards = track.querySelectorAll<HTMLElement>('.era-panel');
+  let closestIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  cards.forEach((card, index) => {
+    const rect = card.getBoundingClientRect();
+    const distance = Math.abs(rect.left + rect.width / 2 - centerX);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = index;
+    }
+  });
+
+  return closestIndex;
+}
+
+function getEraTravelDistance(container: HTMLElement, track: HTMLElement) {
+  const lastCard = track.querySelectorAll<HTMLElement>('.era-panel').item(ERAS.length - 1);
+  if (!lastCard) return 0;
+
+  const currentX = Number(gsap.getProperty(track, 'x')) || 0;
+  const cardRect = lastCard.getBoundingClientRect();
+  const baseCardCenter = cardRect.left + cardRect.width / 2 - currentX;
+  const containerCenter = container.getBoundingClientRect().left + container.clientWidth / 2;
+
+  return Math.max(0, baseCardCenter - containerCenter);
 }
 
 interface ErasCorridorProps {
@@ -19,6 +49,13 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
   const trackRef = useRef<HTMLDivElement>(null);
   const bgHueRef = useRef<HTMLDivElement>(null);
   const [activeEraIndex, setActiveEraIndex] = useState(0);
+  const activeEraIndexRef = useRef(0);
+
+  const syncActiveEraIndex = useCallback((index: number) => {
+    if (index === activeEraIndexRef.current) return;
+    activeEraIndexRef.current = index;
+    setActiveEraIndex(index);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -28,8 +65,16 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
 
     const ctx = gsap.matchMedia();
     ctx.add('(min-width: 768px)', () => {
+      let measureFrame = 0;
+      const measureActiveCard = () => {
+        if (measureFrame) return;
+        measureFrame = requestAnimationFrame(() => {
+          measureFrame = 0;
+          syncActiveEraIndex(getClosestEraIndex(container, track));
+        });
+      };
       const getScrollAmount = () => {
-        return -(track.scrollWidth - window.innerWidth + 80);
+        return -getEraTravelDistance(container, track);
       };
 
       // Main Horizontal Corridor Timeline
@@ -38,19 +83,13 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
           id: 'eras-corridor',
           trigger: container,
           start: 'top top',
-          end: () => `+=${Math.max(window.innerHeight * 3, track.scrollWidth - window.innerWidth + 400)}`,
+          end: () => `+=${Math.max(window.innerHeight * 3, getEraTravelDistance(container, track) + 300)}`,
           pin: true,
           scrub: 0.75,
           anticipatePin: 1,
           invalidateOnRefresh: true,
-          onUpdate: (self) => {
-            // Update active era index according to progress
-            const idx = Math.min(
-              ERAS.length - 1,
-              Math.round(self.progress * (track.scrollWidth - window.innerWidth + 80) / ((track.querySelector<HTMLElement>('.era-panel')?.offsetWidth || 400) + (window.innerWidth >= 768 ? 40 : 24)))
-            );
-            setActiveEraIndex(idx);
-          },
+          onUpdate: measureActiveCard,
+          onRefresh: measureActiveCard,
         },
       });
 
@@ -82,24 +121,36 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
           );
         }
       });
+
+      measureActiveCard();
+      return () => {
+        if (measureFrame) cancelAnimationFrame(measureFrame);
+      };
     });
 
     return () => ctx.revert();
-  }, []);
+  }, [syncActiveEraIndex]);
 
   const selectEra = (index: number) => {
     const trigger = ScrollTrigger.getById('eras-corridor');
-    if (!trackRef.current) return;
+    const container = containerRef.current;
+    const track = trackRef.current;
+    if (!container || !track) return;
     if (!trigger) {
-      const card = trackRef.current.querySelectorAll<HTMLElement>('.era-panel')[index];
-      trackRef.current.scrollTo({ left: card.offsetLeft - 24, behavior: 'smooth' });
-      setActiveEraIndex(index);
+      const card = track.querySelectorAll<HTMLElement>('.era-panel')[index];
+      track.scrollTo({ left: card.offsetLeft - 24, behavior: 'smooth' });
+      syncActiveEraIndex(index);
       return;
     }
-    const cards = trackRef.current.querySelectorAll<HTMLElement>('.era-panel');
-    const distance = trackRef.current.scrollWidth - window.innerWidth + 80;
-    const progress = Math.min(1, (cards[index].offsetLeft - cards[0].offsetLeft) / distance);
+    const cards = track.querySelectorAll<HTMLElement>('.era-panel');
+    const currentX = Number(gsap.getProperty(track, 'x')) || 0;
+    const cardRect = cards[index].getBoundingClientRect();
+    const cardCenter = cardRect.left + cardRect.width / 2 - currentX;
+    const containerCenter = container.getBoundingClientRect().left + container.clientWidth / 2;
+    const distance = getEraTravelDistance(container, track);
+    const progress = distance ? Math.max(0, Math.min(1, (cardCenter - containerCenter) / distance)) : 0;
     window.scrollTo({ top: trigger.start + progress * (trigger.end - trigger.start), behavior: 'smooth' });
+    syncActiveEraIndex(index);
   };
 
   const currentEra = ERAS[activeEraIndex] || ERAS[0];
@@ -131,7 +182,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
       <div className="relative z-20 px-6 md:px-14 pt-20 md:pt-24 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <span className="font-sans text-[10px] md:text-[11px] tracking-[0.32em] uppercase text-amber-300/80 mb-2 block">
-            {copy.badge} · {currentEra.year}
+            {copy.badge}{currentEra.year && ` · ${currentEra.year}`}
           </span>
           <h2 className="font-cinzel text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-normal text-white tracking-[0.06em]">
             {copy.title}
@@ -147,9 +198,8 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
         ref={trackRef}
         onScroll={(event) => {
           if (window.innerWidth >= 768) return;
-          const track = event.currentTarget;
-          const card = track.querySelector<HTMLElement>('.era-panel');
-          if (card) setActiveEraIndex(Math.min(ERAS.length - 1, Math.round(track.scrollLeft / (card.offsetWidth + 24))));
+          const container = containerRef.current;
+          if (container) syncActiveEraIndex(getClosestEraIndex(container, event.currentTarget));
         }}
         className="relative z-10 flex items-center gap-6 md:gap-10 px-6 md:px-14 pb-14 md:pb-16 w-max will-change-transform"
       >
@@ -162,8 +212,8 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
                 isCurrent ? 'scale-100 shadow-[0_10px_40px_rgba(0,0,0,0.8)]' : 'scale-[0.98] opacity-90'
               }`}
               style={{
-                width: 'clamp(320px, 36vw, 540px)',
-                height: 'clamp(460px, 58vh, 640px)',
+                width: 'min(40vw, 64svh)',
+                height: 'min(58svh, 40vw)',
                 backgroundColor: '#0c0c0d',
               }}
             >
@@ -194,30 +244,30 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
                   </span>
                 </div>
 
-                <div className="px-3 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-[10px] font-sans tracking-[0.18em] text-white/70">
+                {era.year && <div className="px-3 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-[10px] font-sans tracking-[0.18em] text-white/70">
                   {era.year}
-                </div>
+                </div>}
               </div>
 
               {/* Card Bottom Information */}
               <div className="relative z-10 p-6 md:p-8 flex flex-col">
                 <span className="font-sans text-[10px] tracking-[0.24em] uppercase text-white/60 mb-2">
-                  {era.stats.genre[language]} · {era.stats.tracks} {copy.viewTracks}
+                  {era.stats.genre[language] && `${era.stats.genre[language]} · `}{era.stats.tracks} {copy.viewTracks}
                 </span>
 
                 <h3 className="font-cinzel text-2xl sm:text-3xl md:text-4xl font-normal text-white tracking-[0.04em] leading-tight">
                   {era.name[language]}
                 </h3>
 
-                <p className="mt-2.5 font-serif text-xs md:text-sm text-white/80 leading-relaxed font-light line-clamp-2">
+                {era.tagline[language] && <p className="mt-2.5 font-serif text-xs md:text-sm text-white/80 leading-relaxed font-light line-clamp-2">
                   {era.tagline[language]}
-                </p>
+                </p>}
 
                 {/* Signature quote quote-mark */}
-                <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-[11px] font-serif italic text-white/50">
+                {era.quote[language] && <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-[11px] font-serif italic text-white/50">
                   <span className="truncate max-w-[85%]">{era.quote[language]}</span>
                   <span className="text-white/30 text-xs">↗</span>
-                </div>
+                </div>}
 
                 <button type="button" className="era-play-button" onClick={() => onPlayAlbum(era.id)}>
                   <span>{language === 'zh' ? '在播放器中打开' : 'OPEN IN PLAYER'}</span>

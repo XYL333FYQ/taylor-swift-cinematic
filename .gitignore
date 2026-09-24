@@ -11,6 +11,14 @@ node_modules
 dist
 dist-ssr
 *.local
+__pycache__/
+*.py[cod]
+
+# Keep personal audio, lyrics, artwork, and generated local catalogs off GitHub.
+public/audio/*
+!public/audio/README.md
+!public/audio/sources.json
+src/data/music.generated.ts
 
 # Editor directories and files
 .vscode/*

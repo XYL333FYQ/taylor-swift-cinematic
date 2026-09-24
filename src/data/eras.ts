@@ -1,3 +1,5 @@
+import { GENERATED_ALBUMS, GENERATED_TRACKS } from '@/data/music.generated';
+
 export interface EraData {
   id: string;
   number: string;
@@ -5,14 +7,10 @@ export interface EraData {
     en: string;
     zh: string;
   };
-  subtitle: {
-    en: string;
-    zh: string;
-  };
+  artist?: string;
   year: string;
   color: string;
   colorAccent: string;
-  gradient: string;
   tagline: {
     en: string;
     zh: string;
@@ -36,7 +34,7 @@ export interface EraData {
   };
 }
 
-export const ERAS: EraData[] = [
+const CURATED_ERAS: EraData[] = [
   {
     "id": "debut",
     "number": "01",
@@ -44,14 +42,9 @@ export const ERAS: EraData[] = [
       "en": "Taylor Swift",
       "zh": "泰勒·斯威夫特 (首张同名专辑)"
     },
-    "subtitle": {
-      "zh": "那时候，喜欢一个人就够写一首歌。",
-      "en": "Back when a crush was enough for a song."
-    },
     "year": "2006",
     "color": "#14b8a6",
     "colorAccent": "#2dd4bf",
-    "gradient": "linear-gradient(135deg, rgba(20, 184, 166, 0.18) 0%, rgba(13, 148, 136, 0.05) 50%, #050505 100%)",
     "tagline": {
       "zh": "那时候，喜欢一个人就够写一首歌。",
       "en": "Back when a crush was enough for a song."
@@ -81,14 +74,9 @@ export const ERAS: EraData[] = [
       "en": "Fearless",
       "zh": "无惧的爱 (Fearless)"
     },
-    "subtitle": {
-      "zh": "还相信故事会有一个好结局。",
-      "en": "You still want the happy ending."
-    },
     "year": "2008",
     "color": "#f59e0b",
     "colorAccent": "#fbbf24",
-    "gradient": "linear-gradient(135deg, rgba(245, 158, 11, 0.22) 0%, rgba(180, 83, 9, 0.06) 50%, #050505 100%)",
     "tagline": {
       "zh": "还相信故事会有一个好结局。",
       "en": "You still want the happy ending."
@@ -118,14 +106,9 @@ export const ERAS: EraData[] = [
       "en": "Speak Now",
       "zh": "爱的告白 (Speak Now)"
     },
-    "subtitle": {
-      "zh": "没来得及说的话，写成一整张。",
-      "en": "Everything you meant to say."
-    },
     "year": "2010",
     "color": "#9333ea",
     "colorAccent": "#c084fc",
-    "gradient": "linear-gradient(135deg, rgba(147, 51, 234, 0.22) 0%, rgba(88, 28, 135, 0.06) 50%, #050505 100%)",
     "tagline": {
       "zh": "没来得及说的话，写成一整张。",
       "en": "Everything you meant to say."
@@ -155,14 +138,9 @@ export const ERAS: EraData[] = [
       "en": "Red",
       "zh": "红 (Red)"
     },
-    "subtitle": {
-      "zh": "有些秋天，过了很久还记得。",
-      "en": "Some autumns stay with you."
-    },
     "year": "2012",
     "color": "#e11d48",
     "colorAccent": "#fb7185",
-    "gradient": "linear-gradient(135deg, rgba(225, 29, 72, 0.22) 0%, rgba(136, 19, 55, 0.08) 50%, #050505 100%)",
     "tagline": {
       "zh": "有些秋天，过了很久还记得。",
       "en": "Some autumns stay with you."
@@ -192,14 +170,9 @@ export const ERAS: EraData[] = [
       "en": "1989",
       "zh": "1989"
     },
-    "subtitle": {
-      "zh": "把车窗放下来，这首开大一点。",
-      "en": "Windows down. Turn this one up."
-    },
     "year": "2014",
     "color": "#0ea5e9",
     "colorAccent": "#38bdf8",
-    "gradient": "linear-gradient(135deg, rgba(14, 165, 233, 0.22) 0%, rgba(3, 105, 161, 0.06) 50%, #050505 100%)",
     "tagline": {
       "zh": "把车窗放下来，这首开大一点。",
       "en": "Windows down. Turn this one up."
@@ -229,14 +202,9 @@ export const ERAS: EraData[] = [
       "en": "reputation",
       "zh": "名誉 (reputation)"
     },
-    "subtitle": {
-      "zh": "外面很吵，喜欢谁是自己的事。",
-      "en": "Let them talk. You know who matters."
-    },
     "year": "2017",
     "color": "#e2e8f0",
     "colorAccent": "#94a3b8",
-    "gradient": "linear-gradient(135deg, rgba(71, 85, 105, 0.28) 0%, rgba(15, 23, 42, 0.4) 50%, #050505 100%)",
     "tagline": {
       "zh": "外面很吵，喜欢谁是自己的事。",
       "en": "Let them talk. You know who matters."
@@ -266,14 +234,9 @@ export const ERAS: EraData[] = [
       "en": "Lover",
       "zh": "恋人 (Lover)"
     },
-    "subtitle": {
-      "zh": "终于可以大大方方地说喜欢。",
-      "en": "It feels good to say it out loud."
-    },
     "year": "2019",
     "color": "#ec4899",
     "colorAccent": "#f472b6",
-    "gradient": "linear-gradient(135deg, rgba(236, 72, 153, 0.22) 0%, rgba(131, 24, 67, 0.06) 50%, #050505 100%)",
     "tagline": {
       "zh": "终于可以大大方方地说喜欢。",
       "en": "It feels good to say it out loud."
@@ -303,14 +266,9 @@ export const ERAS: EraData[] = [
       "en": "folklore",
       "zh": "民间故事 (folklore)"
     },
-    "subtitle": {
-      "zh": "雨天，耳机，暂时不回消息。",
-      "en": "Rain outside. Headphones on."
-    },
     "year": "2020",
     "color": "#a1a1aa",
     "colorAccent": "#d4d4d8",
-    "gradient": "linear-gradient(135deg, rgba(161, 161, 170, 0.2) 0%, rgba(39, 39, 42, 0.25) 50%, #050505 100%)",
     "tagline": {
       "zh": "雨天，耳机，暂时不回消息。",
       "en": "Rain outside. Headphones on."
@@ -340,14 +298,9 @@ export const ERAS: EraData[] = [
       "en": "evermore",
       "zh": "永恒传说 (evermore)"
     },
-    "subtitle": {
-      "zh": "听完了，还想在这里待一会儿。",
-      "en": "Stay a little longer."
-    },
     "year": "2020",
     "color": "#d97706",
     "colorAccent": "#f59e0b",
-    "gradient": "linear-gradient(135deg, rgba(217, 119, 6, 0.2) 0%, rgba(69, 26, 3, 0.15) 50%, #050505 100%)",
     "tagline": {
       "zh": "听完了，还想在这里待一会儿。",
       "en": "Stay a little longer."
@@ -377,14 +330,9 @@ export const ERAS: EraData[] = [
       "en": "Midnights",
       "zh": "午夜 (Midnights)"
     },
-    "subtitle": {
-      "zh": "白天想通的事，午夜又想了一遍。",
-      "en": "It made sense before midnight."
-    },
     "year": "2022",
     "color": "#6366f1",
     "colorAccent": "#818cf8",
-    "gradient": "linear-gradient(135deg, rgba(99, 102, 241, 0.24) 0%, rgba(30, 27, 75, 0.25) 50%, #050505 100%)",
     "tagline": {
       "zh": "白天想通的事，午夜又想了一遍。",
       "en": "It made sense before midnight."
@@ -414,14 +362,9 @@ export const ERAS: EraData[] = [
       "en": "The Tortured Poets Department",
       "zh": "苦难诗社 (TTPD)"
     },
-    "subtitle": {
-      "zh": "这次，没把话整理好再说。",
-      "en": "Before the feelings were tidied away."
-    },
     "year": "2024",
     "color": "#f1f5f9",
     "colorAccent": "#cbd5e1",
-    "gradient": "linear-gradient(135deg, rgba(203, 213, 225, 0.2) 0%, rgba(30, 41, 59, 0.25) 50%, #050505 100%)",
     "tagline": {
       "zh": "这次，没把话整理好再说。",
       "en": "Before the feelings were tidied away."
@@ -451,14 +394,9 @@ export const ERAS: EraData[] = [
       "en": "The Life of a Showgirl",
       "zh": "歌舞女郎的一生"
     },
-    "subtitle": {
-      "zh": "今晚想听一点亮的。",
-      "en": "Something brighter for tonight."
-    },
     "year": "2025",
     "color": "#d47639",
     "colorAccent": "#eeb383",
-    "gradient": "linear-gradient(135deg, #55321e66, #050505)",
     "tagline": {
       "zh": "今晚想听一点亮的。",
       "en": "Something brighter for tonight."
@@ -482,3 +420,44 @@ export const ERAS: EraData[] = [
     }
   }
 ];
+
+// The first twelve chapters keep their editorial copy. New album folders join
+// the same archive without requiring another source edit.
+const curatedIds = new Set(CURATED_ERAS.map((era) => era.id));
+const discoveredEras: EraData[] = GENERATED_ALBUMS
+  .filter((album) => !curatedIds.has(album.id))
+  .map((album, index) => {
+    const number = String(CURATED_ERAS.length + index + 1).padStart(2, '0');
+    const title = album.name.en;
+    return {
+      id: album.id,
+      number,
+      name: album.name,
+      artist: album.artist,
+      year: album.year,
+      color: album.color,
+      colorAccent: album.colorAccent,
+      tagline: album.subtitle,
+      quote: { en: '', zh: '' },
+      description: album.description,
+      image: album.image,
+      watermark: album.year ? `${title.toUpperCase()} · ${album.year}` : title.toUpperCase(),
+      stats: { tracks: GENERATED_TRACKS[album.id]?.length ?? 0, genre: album.genre },
+    };
+  });
+
+export const ERAS: EraData[] = [
+  ...CURATED_ERAS.map((era) => {
+    const discovered = GENERATED_ALBUMS.find((album) => album.id === era.id);
+    if (!discovered) return era;
+    return {
+      ...era,
+      artist: discovered.artist ?? era.artist,
+      stats: { ...era.stats, tracks: GENERATED_TRACKS[era.id]?.length ?? era.stats.tracks },
+    };
+  }),
+  ...discoveredEras,
+];
+
+const years = ERAS.map((era) => Number(era.year)).filter((year) => Number.isFinite(year) && year > 0);
+export const ERA_YEAR_RANGE = years.length ? `${Math.min(...years)}—${Math.max(...years)}` : '';

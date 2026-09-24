@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "pnpm generate:audio && tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "pnpm generate:audio && tsc -b --pretty false",
+    "generate:audio": "node --experimental-strip-types -e \"import('./plugins/audio-library.ts').then(m => m.generateAudioLibrary(process.cwd()))\"",
+    "test:audio": "node --experimental-strip-types --test scripts/test-audio-library.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",
@@ -27,6 +30,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
+    "music-metadata": "^11.16.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.35.1",
     "vite": "^7.0.4"

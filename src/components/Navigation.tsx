@@ -1,16 +1,26 @@
 import { useState, useEffect } from 'react';
 import type { Language } from '@/data/i18n';
-import { ambientSound } from '@/lib/audio/ambient';
+import { ERAS } from '@/data/eras';
 
 interface NavigationProps {
   language: Language;
   onToggleLanguage: () => void;
   onOpenMusic: () => void;
+  /** 背景音乐是否正在播放，用来同步开关状态。 */
+  isMusicPlaying: boolean;
+  /** 切换背景音乐：播放中则暂停，暂停中则继续或从头轮换。 */
+  onToggleMusic: () => void;
   brandText: string;
 }
 
-export function Navigation({ language, onToggleLanguage, onOpenMusic, brandText }: NavigationProps) {
-  const [isAudioActive, setIsAudioActive] = useState(false);
+export function Navigation({
+  language,
+  onToggleLanguage,
+  onOpenMusic,
+  isMusicPlaying,
+  onToggleMusic,
+  brandText,
+}: NavigationProps) {
   const [hasScrolled, setHasScrolled] = useState(false);
 
   useEffect(() => {
@@ -20,11 +30,6 @@ export function Navigation({ language, onToggleLanguage, onOpenMusic, brandText 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-
-  const handleToggleAudio = () => {
-    const nextState = ambientSound.toggle();
-    setIsAudioActive(nextState);
-  };
 
   const handleScrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -65,26 +70,26 @@ export function Navigation({ language, onToggleLanguage, onOpenMusic, brandText 
         >
           ♫
         </button>
-        {/* Audio Toggle */}
+        {/* Background music toggle */}
         <button
           type="button"
-          onClick={handleToggleAudio}
+          onClick={onToggleMusic}
           className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[11px] tracking-[0.14em] font-sans transition-all duration-300 border cursor-pointer ${
-            isAudioActive
+            isMusicPlaying
               ? 'border-amber-400/60 bg-amber-400/10 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.25)]'
               : 'border-white/20 bg-white/5 text-white/70 hover:text-white hover:border-white/40'
           }`}
-          aria-pressed={isAudioActive}
-          aria-label={language === 'zh' ? '切换环境声' : 'Toggle ambient sound'}
-          title={language === 'zh' ? '合成环境声景' : 'Generative ambient soundscape'}
+          aria-pressed={isMusicPlaying}
+          aria-label={language === 'zh' ? '切换背景音乐' : 'Toggle background music'}
+          title={language === 'zh' ? `${ERAS.length} 个时代的歌曲轮换` : `${ERAS.length} eras on rotation`}
         >
           <span
             className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
-              isAudioActive ? 'bg-amber-400 animate-pulse' : 'bg-white/40'
+              isMusicPlaying ? 'bg-amber-400 animate-pulse' : 'bg-white/40'
             }`}
           />
-          <span className="hidden sm:inline">SOUND</span>
-          <span>{isAudioActive ? 'ON' : 'OFF'}</span>
+          <span className="hidden sm:inline">{language === 'zh' ? '背景音乐' : 'MUSIC'}</span>
+          <span>{isMusicPlaying ? 'ON' : 'OFF'}</span>
         </button>
 
         {/* Language Toggle */}

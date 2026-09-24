@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Camera, Mesh, Program, Renderer, Texture, Transform } from 'ogl';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CustomEase } from 'gsap/CustomEase';
 import type { SiteCopy } from '@/data/i18n';
+import { ERAS } from '@/data/eras';
 import {
   createCylinderGeometry,
   createParticleGeometry,
@@ -28,20 +29,7 @@ if (typeof window !== 'undefined') {
   }
 }
 
-const CYLINDER_IMAGES = [
-  './img/taylor/era-01.webp',
-  './img/taylor/era-02.webp',
-  './img/taylor/era-03.webp',
-  './img/taylor/era-04.webp',
-  './img/taylor/era-05.webp',
-  './img/taylor/era-06.webp',
-  './img/taylor/era-07.webp',
-  './img/taylor/era-08.webp',
-  './img/taylor/era-09.webp',
-  './img/taylor/era-10.webp',
-  './img/taylor/era-11.webp',
-  './img/taylor/era-12.webp',
-];
+const CYLINDER_IMAGES = ERAS.map((era) => era.image);
 
 interface CylinderExperienceProps {
   copy: SiteCopy['cylinder'];
@@ -50,12 +38,107 @@ interface CylinderExperienceProps {
 
 type ParticleMesh = Mesh & { userData: ParticleUserData };
 
+/**
+ * WebGL 可用性探测。
+ * 访客禁用硬件加速、或在无 GPU 的虚拟机里打开时，OGL 的 Renderer 会直接抛错。
+ * 提前判断，才能优雅降级而不是留下一张白屏。
+ */
+function isWebGLAvailable() {
+  try {
+    const probe = document.createElement('canvas');
+    return Boolean(
+      window.WebGLRenderingContext &&
+        (probe.getContext('webgl2') || probe.getContext('webgl')),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 无 WebGL 时的静态替代：把原本由 3D 圆柱承载的四段叙事和已发现的专辑
+ * 用排版与横向画廊呈现，保持同一套视觉语言。
+ */
+function CylinderFallback({ copy }: { copy: SiteCopy['cylinder'] }) {
+  const rootRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const ctx = gsap.context(() => {
+      gsap.utils.toArray<HTMLElement>('.cylinder-fallback-block').forEach((el) => {
+        gsap.fromTo(
+          el,
+          { opacity: 0, y: 42 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 1.1,
+            ease: 'power3.out',
+            scrollTrigger: { trigger: el, start: 'top 82%' },
+          },
+        );
+      });
+      gsap.fromTo(
+        '.cylinder-fallback-frame',
+        { opacity: 0, y: 34 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.9,
+          stagger: 0.05,
+          ease: 'power3.out',
+          scrollTrigger: { trigger: '.cylinder-fallback-gallery', start: 'top 85%' },
+        },
+      );
+    }, rootRef);
+    return () => ctx.revert();
+  }, []);
+
+  return (
+    <section
+      id="journey"
+      ref={rootRef}
+      className="cylinder-fallback"
+      aria-label={copy.perspectives[0]?.title ?? 'The cylinder'}
+    >
+      {copy.perspectives.map((item, index) => (
+        <article className="cylinder-fallback-block" key={item.tag}>
+          <span className="cylinder-fallback-index">{String(index + 1).padStart(2, '0')}</span>
+          <div>
+            <p className="section-kicker">{item.tag}</p>
+            <h2>{item.title}</h2>
+            <p>{item.subtitle}</p>
+          </div>
+        </article>
+      ))}
+
+      <div className="cylinder-fallback-gallery">
+        {CYLINDER_IMAGES.map((src, index) => (
+          <figure className="cylinder-fallback-frame" key={src}>
+            <img src={src} alt="" loading="lazy" />
+            <figcaption>{String(index + 1).padStart(2, '0')}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) {
+  const didNotifyLoadedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasShellRef = useRef<HTMLDivElement>(null);
   const textShellRef = useRef<HTMLDivElement>(null);
   const textRefs = useRef<(HTMLDivElement | null)[]>([]);
+  /**
+   * 首帧就决定走 3D 还是静态版，而不是等挂载后再切换。
+   *
+   * 原因是 ErasCorridor 的 ScrollTrigger pin 会把元素重新包进 pin-spacer，
+   * React 对父节点子元素的记录会因此失效；此时再插入/替换兄弟节点会抛
+   * NotFoundError（insertBefore）。渲染期定好形状就没有这个风险。
+   */
+  const [hasFailed, setHasFailed] = useState(() => !isWebGLAvailable());
 
   const rendererRef = useRef<Renderer | null>(null);
   const cameraRef = useRef<Camera | null>(null);
@@ -68,39 +151,75 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
   const particlesRef = useRef<ParticleMesh[]>([]);
 
   useEffect(() => {
+    const notifyLoaded = () => {
+      if (didNotifyLoadedRef.current) return;
+      didNotifyLoadedRef.current = true;
+      onLoaded();
+    };
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container) return;
+    if (!canvas || !container) {
+      // 静态降级版没有画布，这里直接放行加载动画，否则整屏 Loader 会一直停着
+      notifyLoaded();
+      return;
+    }
 
     let isDestroyed = false;
+    let hasImageFailed = false;
     let animationFrame = 0;
     let animationContext: gsap.Context | undefined;
     let sceneVisible = false;
     const visibilityObserver = new IntersectionObserver(([entry]) => { sceneVisible = entry.isIntersecting; });
     visibilityObserver.observe(container);
 
-    const renderer = new Renderer({
-      canvas,
-      width: window.innerWidth,
-      height: window.innerHeight,
-      dpr: Math.min(window.devicePixelRatio, 2),
-      alpha: true,
-      antialias: true,
-    });
+    const fallbackToStatic = () => {
+      if (isDestroyed || hasImageFailed) return;
+      hasImageFailed = true;
+      visibilityObserver.disconnect();
+      setHasFailed(true);
+      notifyLoaded();
+    };
+
+    let renderer: Renderer;
+    try {
+      renderer = new Renderer({
+        canvas,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        dpr: Math.min(window.devicePixelRatio, 2),
+        alpha: true,
+        antialias: true,
+      });
+    } catch (error) {
+      console.warn('WebGL context creation failed — falling back to the static layout.', error);
+      fallbackToStatic();
+      return () => { isDestroyed = true; visibilityObserver.disconnect(); };
+    }
+
     const gl = renderer.gl;
-    gl.clearColor(0, 0, 0, 1);
+    // 透明清屏：让下方的环境光晕透出来，圆柱周围不再是死黑
+    gl.clearColor(0, 0, 0, 0);
     gl.disable(gl.CULL_FACE);
     rendererRef.current = renderer;
 
     const getResponsiveConfig = () => {
       const width = window.innerWidth;
+      const height = window.innerHeight;
       const isMobile = width < 768;
       const isTablet = width >= 768 && width < 1024;
+      const radius = isMobile ? 1.9 : isTablet ? 2.3 : 2.5;
+      const fov = isMobile ? 52 : 45;
+      // 圆柱默认占画面宽度的比例。手机上允许略微出血，反而更有临场感。
+      const coverage = isMobile ? 1.05 : isTablet ? 0.72 : 0.62;
+      // 由「目标占比」反推相机距离，而不是写死一个 z，这样任何窗口比例下
+      // 圆柱在画面里的分量都是一致的，也就不会出现大片空黑把它压小。
+      const halfWidthPerUnit = Math.tan((fov * Math.PI) / 360) * (width / height);
+      const cameraZ = Math.max(radius / (halfWidthPerUnit * coverage), radius * 1.8);
       return {
-        radius: isMobile ? 1.9 : isTablet ? 2.3 : 2.5,
+        radius,
         height: isMobile ? 1.4 : isTablet ? 1.8 : 2.0,
-        cameraZ: isMobile ? 6.2 : isTablet ? 7.2 : 8.0,
-        fov: isMobile ? 52 : 45,
+        cameraZ,
+        fov,
         isMobile,
       };
     };
@@ -160,7 +279,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
-        if (isDestroyed) return;
+        if (isDestroyed || hasImageFailed) return;
         imageObjects[idx] = img;
         loadedCount += 1;
 
@@ -350,7 +469,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
             });
           });
 
-          onLoaded();
+          notifyLoaded();
           ScrollTrigger.refresh();
 
           // Continuous Render Loop
@@ -404,8 +523,18 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
         }
       };
       img.onerror = () => {
-        console.error('Failed to load cylinder image:', src);
-        onLoaded();
+        if (isDestroyed || hasImageFailed) return;
+        console.warn('Cylinder image failed; trying the existing stage fallback:', src);
+        if (src === './img/taylor/stage.webp') {
+          fallbackToStatic();
+          return;
+        }
+        img.onerror = () => {
+          if (isDestroyed || hasImageFailed) return;
+          console.error('Cylinder stage fallback failed; using the static layout.');
+          fallbackToStatic();
+        };
+        img.src = './img/taylor/stage.webp';
       };
       img.src = src;
     });
@@ -421,7 +550,9 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       particlesRef.current.forEach((particle) => { particle.geometry.remove(); particle.program.remove(); });
       particlesRef.current = [];
     };
-  }, [onLoaded]);
+  }, [onLoaded, hasFailed]);
+
+  if (hasFailed) return <CylinderFallback copy={copy} />;
 
   return (
     <>
@@ -431,7 +562,9 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
         aria-hidden="true"
         className="fixed inset-0 z-10 pointer-events-none transition-opacity duration-300"
       >
-        <canvas ref={canvasRef} className="block w-full h-full" />
+        {/* 舞台光晕：让圆柱周围的留白是「被打亮的黑」，而不是空黑 */}
+        <div className="cylinder-ambient" />
+        <canvas ref={canvasRef} className="relative block w-full h-full" />
       </div>
 
       {/* Floating Perspective Typography Overlay */}
