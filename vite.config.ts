@@ -16,6 +16,8 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 5173,
+    // Keep local dev away from stale previews that may still own Vite's default port.
+    port: 5174,
+    strictPort: true,
   },
 });

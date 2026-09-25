@@ -38,6 +38,20 @@ interface CylinderExperienceProps {
 
 type ParticleMesh = Mesh & { userData: ParticleUserData };
 
+const CYLINDER_CORS_CACHE_REVISION = '2';
+
+function withFreshCrossOriginCacheKey(src: string): string | undefined {
+  try {
+    const url = new URL(src, window.location.href);
+    if (url.origin === window.location.origin
+      || url.searchParams.get('cylinder-cors') === CYLINDER_CORS_CACHE_REVISION) return undefined;
+    url.searchParams.set('cylinder-cors', CYLINDER_CORS_CACHE_REVISION);
+    return url.href;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * WebGL 可用性探测。
  * 访客禁用硬件加速、或在无 GPU 的虚拟机里打开时，OGL 的 Renderer 会直接抛错。
@@ -292,6 +306,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
 
     cylinderImages.forEach((src, idx) => {
       const img = new Image();
+      let retriedWithFreshCacheKey = false;
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         if (isDestroyed || hasImageFailed) return;
@@ -547,6 +562,15 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       };
       img.onerror = () => {
         if (isDestroyed || hasImageFailed) return;
+        if (!retriedWithFreshCacheKey) {
+          const retrySrc = withFreshCrossOriginCacheKey(src);
+          if (retrySrc) {
+            retriedWithFreshCacheKey = true;
+            console.warn('Cylinder image failed; retrying with a fresh cross-origin cache key:', src);
+            img.src = retrySrc;
+            return;
+          }
+        }
         console.warn('Cylinder image failed; trying the existing stage fallback:', src);
         if (src === resolveMediaUrl('./theme/taylor/finale.webp')) {
           fallbackToStatic();
