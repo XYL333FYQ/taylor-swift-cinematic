@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { assertUniqueAlbumIds } from '../src/data/assertUniqueAlbumIds.ts';
+import { CYLINDER_CORS_CACHE_REVISION, CYLINDER_CORS_RETRY_REVISION, withCylinderCorsCacheKey } from '../src/lib/cylinderCorsCache.ts';
 import { MAX_CYLINDER_ALBUMS, selectCylinderAlbums } from '../src/lib/selectCylinderAlbums.ts';
 
 function albums(count: number) {
@@ -54,5 +55,26 @@ describe('cylinder album selection', () => {
     assert.throws(() => assertUniqueAlbumIds([{ id: 'duplicate' }, { id: 'duplicate' }]), /duplicate id/i);
     assert.throws(() => assertUniqueAlbumIds([{ id: ' ' }]), /valid id/i);
     assert.throws(() => assertUniqueAlbumIds(undefined), /albums array/i);
+  });
+
+  it('uses the fresh cross-origin cache key on the first request and a different retry key', () => {
+    const source = 'https://music.example.test/albums/one/artwork/presentation.webp?v=abc';
+    const page = 'https://site.example.test/';
+    assert.equal(
+      withCylinderCorsCacheKey(source, page, CYLINDER_CORS_CACHE_REVISION),
+      `${source}&cylinder-cors=2`,
+    );
+    assert.equal(
+      withCylinderCorsCacheKey(`${source}&cylinder-cors=2`, page, CYLINDER_CORS_CACHE_REVISION),
+      undefined,
+    );
+    assert.equal(
+      withCylinderCorsCacheKey(`${source}&cylinder-cors=2`, page, CYLINDER_CORS_RETRY_REVISION),
+      `${source}&cylinder-cors=3`,
+    );
+    assert.equal(
+      withCylinderCorsCacheKey('/audio/album/presentation.webp', page, CYLINDER_CORS_CACHE_REVISION),
+      undefined,
+    );
   });
 });

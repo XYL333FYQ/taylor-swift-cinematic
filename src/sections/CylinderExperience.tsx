@@ -6,6 +6,11 @@ import { CustomEase } from 'gsap/CustomEase';
 import type { SiteCopy } from '@/data/i18n';
 import { useCatalog } from '@/data/catalog';
 import { resolveMediaUrl } from '@/data/media';
+import {
+  CYLINDER_CORS_CACHE_REVISION,
+  CYLINDER_CORS_RETRY_REVISION,
+  withCylinderCorsCacheKey,
+} from '@/lib/cylinderCorsCache';
 import { selectCylinderAlbums } from '@/lib/selectCylinderAlbums';
 import {
   createCylinderGeometry,
@@ -38,20 +43,6 @@ interface CylinderExperienceProps {
 }
 
 type ParticleMesh = Mesh & { userData: ParticleUserData };
-
-const CYLINDER_CORS_CACHE_REVISION = '2';
-
-function withFreshCrossOriginCacheKey(src: string): string | undefined {
-  try {
-    const url = new URL(src, window.location.href);
-    if (url.origin === window.location.origin
-      || url.searchParams.get('cylinder-cors') === CYLINDER_CORS_CACHE_REVISION) return undefined;
-    url.searchParams.set('cylinder-cors', CYLINDER_CORS_CACHE_REVISION);
-    return url.href;
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * WebGL 可用性探测。
@@ -567,7 +558,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       img.onerror = () => {
         if (isDestroyed || hasImageFailed) return;
         if (!retriedWithFreshCacheKey) {
-          const retrySrc = withFreshCrossOriginCacheKey(src);
+          const retrySrc = withCylinderCorsCacheKey(src, window.location.href, CYLINDER_CORS_RETRY_REVISION);
           if (retrySrc) {
             retriedWithFreshCacheKey = true;
             console.warn('Cylinder image failed; retrying with a fresh cross-origin cache key:', src);
@@ -587,7 +578,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
         };
         img.src = resolveMediaUrl('./theme/taylor/finale.webp');
       };
-      img.src = src;
+      img.src = withCylinderCorsCacheKey(src, window.location.href, CYLINDER_CORS_CACHE_REVISION) ?? src;
     });
 
     return () => {
