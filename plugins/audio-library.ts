@@ -731,7 +731,14 @@ async function readAlbum(
   const name = pair(manifest.name, built.albumName);
   const genre = pair(manifest.genre ?? built.genre, '');
   const cover = local.images.find((image) => image.relativePath.toLowerCase() === 'artwork/cover.webp')?.publicUrl ?? built.artwork.url;
-  const presentation = local.images.find((image) => image.relativePath.toLowerCase() === 'artwork/presentation.webp')?.publicUrl ?? cover;
+  const preferredPresentation = local.images.find((image) => normalizedPathKey(image.relativePath) === 'artwork/presentation.webp');
+  const presentationCandidates = local.images.filter((image) => normalizedPathKey(image.directory) === 'artwork'
+    && image.stem.normalize('NFC').toLowerCase() === 'presentation');
+  if (!preferredPresentation && presentationCandidates.length > 1) {
+    warning(folder, 'multiple artwork/presentation images; presentation ignored and album cover used.');
+  }
+  const presentation = preferredPresentation?.publicUrl
+    ?? (presentationCandidates.length === 1 ? presentationCandidates[0]!.publicUrl : cover);
   return {
     id,
     folder,

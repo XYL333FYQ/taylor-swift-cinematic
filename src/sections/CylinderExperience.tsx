@@ -6,6 +6,7 @@ import { CustomEase } from 'gsap/CustomEase';
 import type { SiteCopy } from '@/data/i18n';
 import { useCatalog } from '@/data/catalog';
 import { resolveMediaUrl } from '@/data/media';
+import { selectCylinderAlbums } from '@/lib/selectCylinderAlbums';
 import {
   createCylinderGeometry,
   createParticleGeometry,
@@ -140,7 +141,10 @@ function CylinderFallback({ copy, images }: { copy: SiteCopy['cylinder']; images
 
 export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) {
   const { albums } = useCatalog();
-  const cylinderImages = useMemo(() => albums.map((album) => resolveMediaUrl(album.artwork.presentation)), [albums]);
+  const cylinderImages = useMemo(
+    () => selectCylinderAlbums(albums).map((album) => resolveMediaUrl(album.artwork.presentation)),
+    [albums],
+  );
   const didNotifyLoadedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -223,7 +227,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       const height = window.innerHeight;
       const isMobile = width < 768;
       const isTablet = width >= 768 && width < 1024;
-      const radius = (isMobile ? 1.9 : isTablet ? 2.3 : 2.5) * Math.max(1, cylinderImages.length / 12);
+      const radius = isMobile ? 1.9 : isTablet ? 2.3 : 2.5;
       const fov = isMobile ? 52 : 45;
       // 圆柱默认占画面宽度的比例。手机上允许略微出血，反而更有临场感。
       const coverage = isMobile ? 1.05 : isTablet ? 0.72 : 0.62;
@@ -265,7 +269,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
     const singleHeight = 1024;
     const hardwareLimit = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     const safeMax = baseDimensions.isMobile
-      ? Math.min(hardwareLimit, cylinderImages.length > 12 ? 4096 : 2048)
+      ? Math.min(hardwareLimit, 2048)
       : Math.min(hardwareLimit, 8192);
     const totalOriginalWidth = singleWidth * cylinderImages.length;
     const scaleFactor = Math.min(1, safeMax / totalOriginalWidth);

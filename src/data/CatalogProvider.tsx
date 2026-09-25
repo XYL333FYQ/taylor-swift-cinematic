@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { CatalogContext, type Album, type Catalog, type PlaylistEntry } from './catalog';
 import { catalogUrl } from './media';
+import { assertUniqueAlbumIds } from './assertUniqueAlbumIds';
 
 function rotationPlaylist(albums: Album[]): PlaylistEntry[] {
   const entries: PlaylistEntry[] = [];
@@ -15,6 +16,7 @@ function rotationPlaylist(albums: Album[]): PlaylistEntry[] {
 }
 
 function normalize(raw: { albums: (Omit<Album, 'year' | 'number' | 'watermark'> & { watermark?: string })[] }): Catalog {
+  assertUniqueAlbumIds(raw.albums);
   const albums = raw.albums.map((album, index) => {
     const year = album.releaseDate.slice(0, 4);
     return {

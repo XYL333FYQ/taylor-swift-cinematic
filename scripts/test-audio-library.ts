@@ -205,6 +205,36 @@ describe('build-time audio library discovery', () => {
     assert.ok(found?.tracks.every((track) => track.artwork === undefined));
   });
 
+  it('recognizes a unique non-WebP presentation image separately from the cover', async () => {
+    const root = await fixtureRoot();
+    await put(root, 'Presentation/01-song.flac');
+    await put(root, 'Presentation/Artwork/cover.png');
+    await put(root, 'Presentation/Artwork/presentation.jpg');
+    const found = await album(root, 'Presentation');
+    assert.match(found?.artwork.cover ?? '', /cover\.png$/);
+    assert.match(found?.artwork.presentation ?? '', /presentation\.jpg$/);
+  });
+
+  it('keeps presentation.webp as the preferred file when alternate formats coexist', async () => {
+    const root = await fixtureRoot();
+    await put(root, 'Presentation WebP/01-song.flac');
+    await put(root, 'Presentation WebP/Artwork/presentation.webp');
+    await put(root, 'Presentation WebP/Artwork/presentation.png');
+    const found = await album(root, 'Presentation WebP');
+    assert.match(found?.artwork.presentation ?? '', /presentation\.webp$/);
+  });
+
+  it('does not guess between multiple presentation formats without the preferred WebP', async () => {
+    const root = await fixtureRoot();
+    await put(root, 'Ambiguous Presentation/01-song.flac');
+    await put(root, 'Ambiguous Presentation/Artwork/cover.webp');
+    await put(root, 'Ambiguous Presentation/Artwork/presentation.jpg');
+    await put(root, 'Ambiguous Presentation/Artwork/presentation.png');
+    const found = await album(root, 'Ambiguous Presentation');
+    assert.match(found?.artwork.cover ?? '', /cover\.webp$/);
+    assert.equal(found?.artwork.presentation, found?.artwork.cover);
+  });
+
   it('keeps a metadata-identified track id after moving it deeper', async () => {
     const root = await fixtureRoot();
     const original = await put(root, 'Stable/A/song.flac');

@@ -17,6 +17,7 @@
     "music:watch": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/music-watch.ts",
     "music:prune": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/music-prune.ts",
     "test:audio": "node --experimental-strip-types --test scripts/test-audio-library.ts",
+    "test:cylinder": "node --experimental-strip-types --test scripts/test-cylinder-album-selection.ts",
     "test:music-sync": "node --experimental-strip-types --test scripts/test-music-sync.ts"
   },
   "dependencies": {

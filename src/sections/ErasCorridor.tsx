@@ -53,6 +53,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
   const bgHueRef = useRef<HTMLDivElement>(null);
   const [activeEraIndex, setActiveEraIndex] = useState(0);
   const activeEraIndexRef = useRef(0);
+  const activeEraIdRef = useRef(albums[0]?.id ?? '');
   useEffect(() => {
     const strip = progressRef.current;
     const active = strip?.querySelector<HTMLElement>('[aria-pressed="true"]');
@@ -60,13 +61,17 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
   }, [activeEraIndex]);
 
   const syncActiveEraIndex = useCallback((index: number) => {
-    if (index === activeEraIndexRef.current) return;
+    const era = albums[index];
+    if (!era) return;
+    if (index === activeEraIndexRef.current && era.id === activeEraIdRef.current) return;
     activeEraIndexRef.current = index;
+    activeEraIdRef.current = era.id;
     setActiveEraIndex(index);
-  }, []);
+  }, [albums]);
   useEffect(() => {
-    if (activeEraIndexRef.current >= albums.length) syncActiveEraIndex(Math.max(0, albums.length - 1));
-  }, [albums.length, syncActiveEraIndex]);
+    const preservedIndex = albums.findIndex((album) => album.id === activeEraIdRef.current);
+    syncActiveEraIndex(preservedIndex >= 0 ? preservedIndex : 0);
+  }, [albums, syncActiveEraIndex]);
 
   useEffect(() => {
     const container = containerRef.current;
