@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { assertUniqueAlbumIds } from '../src/data/assertUniqueAlbumIds.ts';
 import { CYLINDER_CORS_CACHE_REVISION, CYLINDER_CORS_RETRY_REVISION, withCylinderCorsCacheKey } from '../src/lib/cylinderCorsCache.ts';
+import { selectCylinderArtworkCandidates } from '../src/lib/cylinderArtworkFallback.ts';
 import { MAX_CYLINDER_ALBUMS, selectCylinderAlbums } from '../src/lib/selectCylinderAlbums.ts';
 
 function albums(count: number) {
@@ -18,20 +19,20 @@ describe('cylinder album selection', () => {
     }
   });
 
-  it('caps 13, 16, and 24 albums at 12 unique entries in catalog order', () => {
-    for (const count of [13, 16, 24]) {
+  it('keeps the 12-album cylinder limit for 12, 13, 20, and 30 simulated albums', () => {
+    for (const count of [12, 13, 20, 30]) {
       const source = albums(count);
       let draw = 0;
       const selected = selectCylinderAlbums(source, MAX_CYLINDER_ALBUMS, () => ((draw++ * 7) % 29) / 29);
       const selectedIds = selected.map((album) => album.id);
 
-      assert.equal(selected.length, MAX_CYLINDER_ALBUMS);
-      assert.equal(new Set(selectedIds).size, MAX_CYLINDER_ALBUMS);
+      assert.equal(selected.length, Math.min(count, MAX_CYLINDER_ALBUMS));
+      assert.equal(new Set(selectedIds).size, selected.length);
       assert.deepEqual(selectedIds, [...selectedIds].sort((left, right) => {
         return Number(left.slice(6)) - Number(right.slice(6));
       }));
       assert.equal(new Set(source.map((album) => album.id)).size, count);
-      assert.equal(draw, MAX_CYLINDER_ALBUMS);
+      assert.equal(draw, count > MAX_CYLINDER_ALBUMS ? MAX_CYLINDER_ALBUMS : 0);
     }
   });
 
@@ -76,5 +77,38 @@ describe('cylinder album selection', () => {
       withCylinderCorsCacheKey('/audio/album/presentation.webp', page, CYLINDER_CORS_CACHE_REVISION),
       undefined,
     );
+  });
+
+  it('orders cylinder artwork fallbacks, removes duplicate URLs, and chooses one track image', () => {
+    const candidates = selectCylinderArtworkCandidates({
+      artwork: { presentation: '/album/presentation.webp', cover: '/album/cover.webp' },
+      tracks: [
+        { artwork: '/album/cover.webp' },
+        { artwork: '/album/track-a.webp' },
+        { artwork: '/album/track-a.webp' },
+        { artwork: '/album/track-b.webp' },
+      ],
+    }, (source) => new URL(source, 'https://site.example.test/').href, () => 0.99);
+
+    assert.deepEqual(candidates, [
+      'https://site.example.test/album/presentation.webp',
+      'https://site.example.test/album/cover.webp',
+      'https://site.example.test/album/track-b.webp',
+      'https://site.example.test/theme/taylor/finale.webp',
+    ]);
+    assert.equal(new Set(candidates).size, candidates.length);
+  });
+
+  it('uses cover, one track artwork, then independent Finale when presentation is the cover', () => {
+    const candidates = selectCylinderArtworkCandidates({
+      artwork: { presentation: '/same.webp', cover: '/same.webp' },
+      tracks: [{ artwork: '/same.webp' }, { artwork: '/track.webp' }],
+    }, (source) => new URL(source, 'https://site.example.test/').href, () => 0);
+
+    assert.deepEqual(candidates, [
+      'https://site.example.test/same.webp',
+      'https://site.example.test/track.webp',
+      'https://site.example.test/theme/taylor/finale.webp',
+    ]);
   });
 });

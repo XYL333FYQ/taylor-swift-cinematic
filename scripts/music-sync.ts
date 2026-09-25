@@ -83,11 +83,15 @@ export async function runMusicSync(): Promise<void> {
         try { await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); }
         catch (error) { throw safeRequestError('DeleteObject', key, error); }
       },
-    }, { confirmPrune });
+    }, {
+      confirmPrune,
+      onLockWait: () => console.log('[music:sync] another process is syncing this R2 target; waiting for its lock.'),
+    });
 
     console.log(`[music:sync] ${result.albums} albums; plan ${result.added} new, ${result.modified} changed, ${result.skipped} unchanged, ${result.cleanupCandidates} stale object(s); ${result.uploaded} media uploaded; catalog ${result.catalogUploaded ? 'published' : 'unchanged'}; ${result.deleted} stale media deleted.`);
     if (result.deletionDeferred) console.log(`[music:sync] cleanup deferred; ${result.pendingDeletes} managed key(s) remain pending confirmation.`);
-    if (result.warnings.length > 0) console.log(`[music:sync] ${result.warnings.length} scan warning(s) require manual cleanup confirmation.`);
+    for (const warning of result.warnings) console.log(`[music:sync] ${warning}`);
+    if (result.warnings.length > 0) console.log(`[music:sync] ${result.warnings.length} non-critical scan warning(s) were retained.`);
   } finally {
     client.destroy();
   }

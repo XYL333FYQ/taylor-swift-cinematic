@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Dirent } from 'node:fs';
 import { readAudioMetadata, type AudioTags, type AudioMetadataReader } from './audio-library-metadata.ts';
 export { readAudioMetadata } from './audio-library-metadata.ts';
@@ -143,10 +144,24 @@ interface TrackDraft {
 
 export interface ScanOptions {
   metadataReader?: AudioMetadataReader;
+  /** Allows sync preflight and tests to check that catalog media can be opened. */
+  verifyReadableFile?: (absolutePath: string) => Promise<void>;
+  onIssue?: (issue: string) => void;
 }
 
-function warning(album: string, message: string): void {
-  console.warn(`[audio-library] ${album} / ${message}`);
+type ScanIssueLevel = 'warning' | 'critical';
+const issueCollector = new AsyncLocalStorage<(issue: string) => void>();
+
+function warning(album: string, message: string, level: ScanIssueLevel = 'warning'): void {
+  const issue = `[audio-library][${level}] ${album} / ${message}`;
+  const collect = issueCollector.getStore();
+  if (collect) collect(issue);
+  else console.warn(issue);
+}
+
+async function verifyReadableFile(absolutePath: string): Promise<void> {
+  const handle = await fs.open(absolutePath, 'r');
+  await handle.close();
 }
 
 function cleanText(value: unknown): string | undefined {
@@ -193,6 +208,8 @@ async function scanResourceTree(
   urlPrefix: string,
   identityPrefix: string,
   albumName: string,
+  verifyReadable: (absolutePath: string) => Promise<void>,
+  missingRootAllowed = false,
 ): Promise<ScannedResources> {
   const results: ScannedResources = { audio: [], lyrics: [], images: [] };
 
@@ -202,8 +219,10 @@ async function scanResourceTree(
       entries = await fs.readdir(currentDirectory, { withFileTypes: true });
     } catch (error) {
       const relative = path.relative(directory, currentDirectory).replace(/\\/g, '/') || '.';
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || currentDirectory !== directory) {
-        warning(albumName, `${relative}: cannot read directory; skipped (${error instanceof Error ? error.message : 'I/O error'}).`);
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT' && currentDirectory === directory && missingRootAllowed) return;
+      {
+        const optionalDirectory = relative.split('/').some((part) => ['artwork', 'lyrics', 'lrc'].includes(part.toLowerCase()));
+        warning(albumName, `${relative}: cannot read directory; skipped (${error instanceof Error ? error.message : 'I/O error'}).`, optionalDirectory ? 'warning' : 'critical');
       }
       return;
     }
@@ -224,6 +243,11 @@ async function scanResourceTree(
       const publicUrl = encodedPath(publicPath);
 
       if (SUPPORTED_AUDIO_EXTENSIONS.has(base.extension)) {
+        try { await verifyReadable(absolutePath); }
+        catch (error) {
+          warning(albumName, `${relativePath}: cannot read required audio; skipped (${error instanceof Error ? error.message : 'I/O error'}).`, 'critical');
+          continue;
+        }
         const parentName = base.directory.split('/').at(-1)?.trim();
         results.audio.push({
           ...base,
@@ -242,7 +266,12 @@ async function scanResourceTree(
           warning(albumName, `${relativePath}: cannot read lyrics; skipped (${error instanceof Error ? error.message : 'I/O error'}).`);
         }
       } else if (SUPPORTED_IMAGE_EXTENSIONS.has(base.extension)) {
-        results.images.push({ ...base, absolutePath, publicUrl });
+        try {
+          await verifyReadable(absolutePath);
+          results.images.push({ ...base, absolutePath, publicUrl });
+        } catch (error) {
+          warning(albumName, `${relativePath}: cannot read optional artwork; skipped (${error instanceof Error ? error.message : 'I/O error'}).`);
+        }
       }
     }
   };
@@ -251,12 +280,12 @@ async function scanResourceTree(
   return results;
 }
 
-async function readJson<T>(file: string, fallback: T, albumName: string): Promise<T> {
+async function readJson<T>(file: string, fallback: T, albumName: string, level: ScanIssueLevel = 'warning'): Promise<T> {
   try {
     return JSON.parse(await fs.readFile(file, 'utf8')) as T;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return fallback;
-    warning(albumName, `${path.basename(file)}: cannot read JSON; defaults used (${error instanceof Error ? error.message : 'invalid JSON'}).`);
+    warning(albumName, `${path.basename(file)}: cannot read JSON; defaults used (${error instanceof Error ? error.message : 'invalid JSON'}).`, level);
     return fallback;
   }
 }
@@ -352,18 +381,19 @@ function findManifestResource<T extends ResourceFile>(
   candidates: readonly T[],
   album: string,
   purpose: string,
+  issueLevel: ScanIssueLevel = 'warning',
 ): T | undefined {
   if (!value) return undefined;
   const safePath = safeManifestPath(value);
   if (!safePath) {
-    warning(album, `${purpose} override "${value}": unsafe relative path; ignored.`);
+    warning(album, `${purpose} override "${value}": unsafe relative path; ignored.`, issueLevel);
     return undefined;
   }
   const exact = candidates.find((candidate) => exactPathKey(candidate.relativePath) === exactPathKey(safePath));
   if (exact) return exact;
   const matches = candidates.filter((candidate) => normalizedPathKey(candidate.relativePath) === normalizedPathKey(safePath));
   if (matches.length !== 1) {
-    warning(album, `${purpose} override "${safePath}": ${matches.length ? 'ambiguous path' : 'file not found'}; automatic resolution used.`);
+    warning(album, `${purpose} override "${safePath}": ${matches.length ? 'ambiguous path' : 'file not found'}; automatic resolution used.`, issueLevel);
     return undefined;
   }
   return matches[0];
@@ -542,7 +572,7 @@ function uniqueManifestOverrides(
       warning(album, 'track override without an audio path; ignored.');
       continue;
     }
-    const audio = findManifestResource(override.audio, localAudio, album, 'track audio');
+    const audio = findManifestResource(override.audio, localAudio, album, 'track audio', 'critical');
     if (!audio) continue;
     const key = exactPathKey(audio.relativePath);
     if (results.has(key)) {
@@ -681,21 +711,57 @@ function findDirectoryName(entries: Dirent[], name: string): string | undefined 
     && entry.name.normalize('NFC').toLowerCase() === name.normalize('NFC').toLowerCase())?.name;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function isLocalizedManifestValue(value: unknown): boolean {
+  if (typeof value === 'string') return true;
+  return isRecord(value)
+    && ('en' in value || 'zh' in value)
+    && ['en', 'zh'].every((key) => value[key] === undefined || typeof value[key] === 'string');
+}
+
+function isValidAlbumManifest(value: unknown): value is AlbumManifest {
+  if (!isRecord(value)) return false;
+  const stringFields = ['id', 'releaseDate', 'artist', 'artwork', 'watermark', 'archiveNote', 'color', 'colorAccent'];
+  if (stringFields.some((key) => value[key] !== undefined && typeof value[key] !== 'string')) return false;
+  if (['name', 'genre', 'description', 'subtitle', 'tagline', 'quote'].some((key) => value[key] !== undefined && !isLocalizedManifestValue(value[key]))) return false;
+  if (value.year !== undefined && typeof value.year !== 'string' && typeof value.year !== 'number') return false;
+  if (value.sortOrder !== undefined && (typeof value.sortOrder !== 'number' || !Number.isFinite(value.sortOrder))) return false;
+  if (value.tracks !== undefined && (!Array.isArray(value.tracks) || value.tracks.some((track) => {
+    if (!isRecord(track) || typeof track.audio !== 'string' || !track.audio.trim()) return true;
+    const trackStringFields = ['title', 'artist', 'lyrics', 'artwork'];
+    if (trackStringFields.some((key) => track[key] !== undefined && typeof track[key] !== 'string')) return true;
+    return ['trackNumber', 'discNumber'].some((key) => track[key] !== undefined
+      && (typeof track[key] !== 'number' || !Number.isFinite(track[key])));
+  }))) return false;
+  return true;
+}
+
 async function readAlbum(
   audioRoot: string,
   folder: string,
   legacyFullRootName: string | undefined,
   catalogMatch: { id: string; entry: PreviewAlbumReference } | undefined,
   reader: AudioMetadataReader,
+  verifyReadable: (absolutePath: string) => Promise<void>,
+  hasLocalFolder: boolean,
 ): Promise<ScannedAlbum | undefined> {
   const albumDirectory = path.join(audioRoot, folder);
-  const parsedManifest = await readJson<unknown>(path.join(albumDirectory, 'album.json'), {}, folder);
-  const manifest: AlbumManifest = parsedManifest && typeof parsedManifest === 'object' && !Array.isArray(parsedManifest)
-    ? parsedManifest as AlbumManifest : {};
+  const parsedManifest = await readJson<unknown>(path.join(albumDirectory, 'album.json'), {}, folder, 'critical');
+  const validManifestObject = isRecord(parsedManifest);
+  const validManifest = validManifestObject && isValidAlbumManifest(parsedManifest);
+  if (!validManifest) warning(folder, 'album.json has an invalid shape; defaults used.', 'critical');
+  const manifest: AlbumManifest = validManifest ? parsedManifest : {};
   if (manifest.tracks != null && !Array.isArray(manifest.tracks)) {
-    warning(folder, 'album.json tracks must be an array; overrides ignored.');
+    warning(folder, 'album.json tracks must be an array.', 'critical');
+  } else if (Array.isArray(manifest.tracks) && manifest.tracks.some((track) => (
+    !track || typeof track !== 'object' || typeof track.audio !== 'string' || !track.audio.trim()
+  ))) {
+    warning(folder, 'album.json tracks entries must be objects with a non-empty audio path.', 'critical');
   }
-  const local = await scanResourceTree(albumDirectory, `audio/${folder}`, '', folder);
+  const local = await scanResourceTree(albumDirectory, `audio/${folder}`, '', folder, verifyReadable, !hasLocalFolder);
   let legacyFull: ScannedResources = { audio: [], lyrics: [], images: [] };
   if (legacyFullRootName) {
     const fullRoot = path.join(audioRoot, legacyFullRootName);
@@ -708,12 +774,11 @@ async function readAlbum(
           `audio/${legacyFullRootName}/${matchingFolder}`,
           `${legacyFullRootName}/${matchingFolder}`,
           folder,
+          verifyReadable,
         );
       }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        warning(folder, `full/${folder}: cannot read legacy full folder; skipped.`);
-      }
+      warning(folder, `full/${folder}: cannot read legacy full folder; skipped (${error instanceof Error ? error.message : 'I/O error'}).`, 'critical');
     }
   }
   if (local.audio.length === 0 && legacyFull.audio.length === 0 && Object.keys(manifest).length === 0) return undefined;
@@ -761,6 +826,8 @@ async function readAlbum(
 }
 
 export async function scanAudioLibrary(root: string, options: ScanOptions = {}): Promise<ScannedAlbum[]> {
+  const collectIssue = options.onIssue ?? ((issue: string) => console.warn(issue));
+  return issueCollector.run(collectIssue, async () => {
   const audioRoot = path.resolve(root, AUDIO_DIRECTORY);
   let entries: Dirent[];
   try {
@@ -793,12 +860,14 @@ export async function scanAudioLibrary(root: string, options: ScanOptions = {}):
     ? parsedCatalog as Record<string, PreviewAlbumReference> : {};
   const catalogByFolder = catalogMatchesByFolder(catalog);
   const metadataReader = options.metadataReader ?? readAudioMetadata;
+  const checkReadable = options.verifyReadableFile ?? verifyReadableFile;
   const albums: ScannedAlbum[] = [];
   const ids = new Map<string, string>();
+  const localFolderKeys = new Set(localFolders.map(normalizedPathKey));
 
   for (const folder of albumFolders) {
     const catalogMatch = catalogByFolder.get(normalizedPathKey(folder));
-    const album = await readAlbum(audioRoot, folder, legacyFullRootName, catalogMatch, metadataReader);
+    const album = await readAlbum(audioRoot, folder, legacyFullRootName, catalogMatch, metadataReader, checkReadable, localFolderKeys.has(normalizedPathKey(folder)));
     if (!album) continue;
     const previous = ids.get(album.id);
     if (previous) throw new Error(`Duplicate stable album id "${album.id}" for folders "${previous}" and "${folder}".`);
@@ -809,6 +878,7 @@ export async function scanAudioLibrary(root: string, options: ScanOptions = {}):
   return albums.sort((a, b) => (Number(a.releaseDate.slice(0, 4)) || 9999) - (Number(b.releaseDate.slice(0, 4)) || 9999)
     || (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)
     || compareNaturalPath(a.folder, b.folder));
+  });
 }
 
 async function writeIfChanged(file: string, content: string): Promise<void> {

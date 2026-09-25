@@ -12,6 +12,7 @@ import {
   withCylinderCorsCacheKey,
 } from '@/lib/cylinderCorsCache';
 import { selectCylinderAlbums } from '@/lib/selectCylinderAlbums';
+import { selectCylinderArtworkCandidates } from '@/lib/cylinderArtworkFallback';
 import {
   createCylinderGeometry,
   createParticleGeometry,
@@ -132,10 +133,15 @@ function CylinderFallback({ copy, images }: { copy: SiteCopy['cylinder']; images
 
 export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) {
   const { albums } = useCatalog();
-  const cylinderImages = useMemo(
-    () => selectCylinderAlbums(albums).map((album) => resolveMediaUrl(album.artwork.presentation)),
-    [albums],
+  const [cylinderImageCandidates] = useState(() =>
+    selectCylinderAlbums(albums).map((album) => selectCylinderArtworkCandidates(
+      album,
+      resolveMediaUrl,
+      Math.random,
+      './theme/taylor/finale.webp',
+    )),
   );
+  const cylinderImages = useMemo(() => cylinderImageCandidates.map((candidates) => candidates[0] ?? ''), [cylinderImageCandidates]);
   const didNotifyLoadedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -299,7 +305,13 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
 
     window.addEventListener('resize', handleResize);
 
-    cylinderImages.forEach((src, idx) => {
+    const loadCandidate = (candidates: string[], idx: number, candidateIndex = 0) => {
+      if (candidateIndex >= candidates.length) {
+        console.error('Cylinder artwork fallbacks failed; using the static layout.');
+        fallbackToStatic();
+        return;
+      }
+      const src = candidates[candidateIndex]!;
       const img = new Image();
       let retriedWithFreshCacheKey = false;
       img.crossOrigin = 'anonymous';
@@ -566,20 +578,12 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
             return;
           }
         }
-        console.warn('Cylinder image failed; trying the existing stage fallback:', src);
-        if (src === resolveMediaUrl('./theme/taylor/finale.webp')) {
-          fallbackToStatic();
-          return;
-        }
-        img.onerror = () => {
-          if (isDestroyed || hasImageFailed) return;
-          console.error('Cylinder stage fallback failed; using the static layout.');
-          fallbackToStatic();
-        };
-        img.src = resolveMediaUrl('./theme/taylor/finale.webp');
+        console.warn('Cylinder image failed; trying the next artwork fallback:', src);
+        loadCandidate(candidates, idx, candidateIndex + 1);
       };
       img.src = withCylinderCorsCacheKey(src, window.location.href, CYLINDER_CORS_CACHE_REVISION) ?? src;
-    });
+    };
+    cylinderImageCandidates.forEach((candidates, idx) => loadCandidate(candidates, idx));
 
     return () => {
       isDestroyed = true;
@@ -592,7 +596,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       particlesRef.current.forEach((particle) => { particle.geometry.remove(); particle.program.remove(); });
       particlesRef.current = [];
     };
-  }, [onLoaded, hasFailed, cylinderImages]);
+  }, [onLoaded, hasFailed, cylinderImageCandidates, cylinderImages]);
 
   if (hasFailed) return <CylinderFallback copy={copy} images={cylinderImages} />;
 

@@ -70,7 +70,13 @@ a { color: inherit; }
 .index-heading > p { font: 14px/1.9 var(--font-serif); color: #aaa397; white-space: pre-line; max-width: 290px; }
 .index-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 7vw; align-items: start; }
 .era-selector button { display: grid; grid-template-columns: 24px 1fr 38px 16px; gap: 16px; align-items: center; width: 100%; padding: 17px 0; border: 0; border-bottom: 1px solid #ffffff17; background: transparent; text-align: left; color: #aaa59c; cursor: pointer; transition: color .25s, padding .25s; }
-@media (min-width: 768px) { .era-selector { position: relative; max-height: max(760px, 100svh); overflow-y: auto; scrollbar-width: thin; } }
+@media (min-width: 768px) {
+  .era-selector { position: relative; max-height: min(708px, 100svh); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(209,186,149,.65) rgba(255,255,255,.035); }
+  .era-selector::-webkit-scrollbar { width: 6px; }
+  .era-selector::-webkit-scrollbar-track { background: rgba(255,255,255,.035); border-radius: 999px; }
+  .era-selector::-webkit-scrollbar-thumb { border: 1px solid rgba(9,9,9,.9); border-radius: 999px; background: linear-gradient(180deg,rgba(238,222,195,.72),rgba(173,146,112,.55)); }
+  .era-selector::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg,rgba(250,239,218,.92),rgba(209,186,149,.82)); }
+}
 .era-progress-dots { position: relative; max-width: calc(100% - 80px); min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .era-progress-dots::-webkit-scrollbar { display: none; }
 .era-selector button > span:nth-child(2) { font: 17px var(--font-serif); }
@@ -121,7 +127,10 @@ a { color: inherit; }
   .era-selector small, .era-selector button > span:last-child { display: none; }
   .index-details h3 { font-size: 30px; }
   .era-corridor .era-panel { width: min(82vw,400px) !important; height: 53svh !important; min-height: 330px; }
+  .era-corridor .era-panel { flex-shrink: 0; }
   .era-corridor { min-height: 740px; height: 100svh; }
+  .era-corridor-track { width: 100% !important; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .era-corridor-track::-webkit-scrollbar { display: none; }
   .era-corridor .era-panel h3 { font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

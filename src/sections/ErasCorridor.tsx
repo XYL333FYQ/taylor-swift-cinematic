@@ -217,7 +217,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
           const container = containerRef.current;
           if (container) syncActiveEraIndex(getClosestEraIndex(container, event.currentTarget));
         }}
-        className="relative z-10 flex items-center gap-6 md:gap-10 px-6 md:px-14 pb-14 md:pb-16 w-max will-change-transform"
+        className="era-corridor-track relative z-10 flex items-center gap-6 md:gap-10 px-6 md:px-14 pb-14 md:pb-16 w-max will-change-transform"
       >
         {albums.map((era: Album, index: number) => {
           const isCurrent = index === activeEraIndex;

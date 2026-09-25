@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { scanAudioLibrary, type CatalogAlbum } from '../plugins/audio-library.ts';
+import { scanAudioLibrary, type CatalogAlbum, type ScanOptions } from '../plugins/audio-library.ts';
+import { withTargetSyncLock } from './music-sync-lock.ts';
 
 export interface ObjectUpload {
   key: string;
@@ -37,6 +38,8 @@ interface SyncState {
 interface MediaFile { key: string; source?: string; text?: string; mime: string }
 export interface MusicSyncOptions {
   confirmPrune?: (plan: MusicPrunePlan) => Promise<boolean>;
+  onLockWait?: () => void;
+  verifyReadableFile?: ScanOptions['verifyReadableFile'];
 }
 const MEDIA_CACHE = 'public, max-age=31536000, immutable';
 const CATALOG_CACHE = 'public, max-age=60, must-revalidate';
@@ -213,20 +216,33 @@ interface AudioScan {
   warnings: string[];
 }
 
-async function scanAudio(root: string): Promise<AudioScan> {
+async function scanAudio(root: string, verifyReadableFile?: ScanOptions['verifyReadableFile']): Promise<AudioScan> {
   let audioStat;
   try { audioStat = await fs.stat(path.join(root, 'audio')); }
   catch { throw new Error('audio/ is missing or unreadable; refusing to sync or clean up.'); }
   if (!audioStat.isDirectory()) throw new Error('audio/ is not a directory; refusing to sync or clean up.');
 
-  const warnings: string[] = [];
-  const originalWarn = console.warn;
-  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+  const issues: string[] = [];
   let albums: CatalogAlbum[];
-  try { albums = await scanAudioLibrary(root); }
-  catch { throw new Error('Audio library scan failed; refusing to sync or clean up.'); }
-  finally { console.warn = originalWarn; }
+  try {
+    albums = await scanAudioLibrary(root, {
+      onIssue: (issue) => issues.push(issue),
+      verifyReadableFile,
+    });
+  }
+  catch (error) {
+    throw new Error(`Audio library scan failed; refusing to sync or clean up. ${error instanceof Error ? error.message : ''}`.trim());
+  }
+  const critical = issues.filter((issue) => issue.startsWith('[audio-library][critical]'));
+  if (critical.length > 0) {
+    throw new Error(`Critical audio scan issue(s) (${critical.length}); refusing to publish or clean up: ${critical.join(' | ')}`);
+  }
+  const warnings = issues.filter((issue) => issue.startsWith('[audio-library][warning]'));
   if (albums.length === 0) throw new Error('No albums found; refusing to publish an empty catalog or clean up.');
+  const emptyAlbums = albums.filter((album) => !Array.isArray(album.tracks) || album.tracks.length === 0);
+  if (emptyAlbums.length > 0) {
+    throw new Error(`Critical scan result: album(s) without readable audio tracks (${emptyAlbums.map((album) => album.id).join(', ')}); refusing to publish or clean up.`);
+  }
   return { albums, warnings };
 }
 
@@ -312,7 +328,7 @@ export async function planMusicPrune(
   return buildMusicPrunePlan(root, target, store);
 }
 
-export async function syncMusic(
+async function syncMusicUnlocked(
   root: string,
   target: string,
   uploader: Uploader,
@@ -331,7 +347,7 @@ export async function syncMusic(
   cleanupCandidates: number;
   warnings: string[];
 }> {
-  const { albums, warnings } = await scanAudio(root);
+  const { albums, warnings } = await scanAudio(root, options.verifyReadableFile);
   const { catalog, files } = await buildCatalog(root, albums);
   const state = await readState(root, target);
   const currentKeys = new Set(files.map((file) => file.key));
@@ -457,4 +473,15 @@ export async function syncMusic(
     deleted, deletionDeferred, pendingDeletes: deletionDeferred ? staleBeforePublish.length : 0,
     added, modified, cleanupCandidates: objects.length, warnings,
   };
+}
+
+export async function syncMusic(
+  root: string,
+  target: string,
+  uploader: Uploader,
+  options: MusicSyncOptions = {},
+): ReturnType<typeof syncMusicUnlocked> {
+  return withTargetSyncLock(target, () => syncMusicUnlocked(root, target, uploader, options), {
+    onWaiting: options.onLockWait,
+  });
 }

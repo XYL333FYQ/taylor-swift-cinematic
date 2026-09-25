@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { spawn } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import {
   planMusicPrune,
@@ -12,6 +14,7 @@ import {
 } from './music-sync-core.ts';
 import { createSerializedSyncQueue, waitForStableAudioTree } from './music-watch.ts';
 import { scanAudioLibrary } from '../plugins/audio-library.ts';
+import { withTargetSyncLock } from './music-sync-lock.ts';
 
 interface Event { type: 'put' | 'head' | 'delete'; key: string }
 interface FakeR2Options {
@@ -398,6 +401,8 @@ test('large deletions and scan warnings require confirmation; declining leaves h
     const result = await syncMusic(root, 'mock|bucket', r2.uploader, {
       async confirmPrune(candidate) { plan = candidate; return false; },
     });
+    assert.ok(result.warnings.length > 0);
+    assert.ok(result.warnings.every((warning) => warning.startsWith('[audio-library][warning]')));
     assert.ok(plan?.requiresConfirmation);
     assert.ok(plan?.reasons.some((reason) => reason.includes('warning')));
     assert.equal(result.deletionDeferred, true);
@@ -407,6 +412,114 @@ test('large deletions and scan warnings require confirmation; declining leaves h
     assert.equal(r2.events.some((event) => event.type === 'delete'), false);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('invalid manifests and unreadable required audio stop before any R2 request', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'music-sync-critical-scan-'));
+  const r2 = fakeR2();
+  try {
+    const albumDirectory = await addAlbum(root, 'album', 'critical-album');
+    await syncMusic(root, 'mock|critical', r2.uploader);
+    const originalCatalog = r2.remote.get('catalog.json')?.toString();
+
+    await fs.writeFile(path.join(albumDirectory, 'album.json'), '{ not valid JSON');
+    r2.events.length = 0;
+    await assert.rejects(syncMusic(root, 'mock|critical', r2.uploader), /Critical audio scan issue.*refusing to publish/);
+    assert.equal(r2.events.length, 0);
+    assert.equal(r2.remote.get('catalog.json')?.toString(), originalCatalog);
+
+    await fs.writeFile(path.join(albumDirectory, 'album.json'), JSON.stringify({
+      id: 'critical-album',
+      tracks: [{ audio: 'missing-required-track.wav' }],
+    }));
+    r2.events.length = 0;
+    await assert.rejects(syncMusic(root, 'mock|critical', r2.uploader), /Critical audio scan issue.*track audio override/);
+    assert.equal(r2.events.length, 0);
+    assert.equal(r2.remote.get('catalog.json')?.toString(), originalCatalog);
+
+    await fs.writeFile(path.join(albumDirectory, 'album.json'), JSON.stringify({ id: 'critical-album' }));
+    r2.events.length = 0;
+    await assert.rejects(syncMusic(root, 'mock|critical', r2.uploader, {
+      async verifyReadableFile(file) {
+        if (path.extname(file) === '.wav') throw new Error('simulated unreadable audio');
+        const handle = await fs.open(file, 'r');
+        await handle.close();
+      },
+    }), /Critical audio scan issue.*required audio/);
+    assert.equal(r2.events.length, 0);
+    assert.equal(r2.remote.get('catalog.json')?.toString(), originalCatalog);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('scan results with an album but no readable audio track cannot publish', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'music-sync-incomplete-scan-'));
+  const r2 = fakeR2();
+  try {
+    const directory = path.join(root, 'audio', 'empty-album');
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, 'album.json'), JSON.stringify({ id: 'empty-album', name: 'Empty' }));
+    await assert.rejects(syncMusic(root, 'mock|incomplete', r2.uploader), /Critical scan result.*without readable audio tracks/);
+    assert.equal(r2.events.length, 0);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('target lock serializes two independent Node processes', async () => {
+  const target = 'mock|cross-process-lock';
+  const lockUrl = pathToFileURL(path.resolve('scripts/music-sync-lock.ts')).href;
+  const childSource = `
+    import { withTargetSyncLock } from ${JSON.stringify(lockUrl)};
+    await withTargetSyncLock(${JSON.stringify(target)}, async () => {
+      console.log('child-entered');
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      console.log('child-released:' + Date.now());
+    });
+  `;
+  const child = spawn(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', childSource], {
+    cwd: process.cwd(),
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let transcript = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => { transcript += chunk; });
+  child.stderr.on('data', (chunk: string) => { transcript += chunk; });
+  const exited = new Promise<number>((resolveExit, rejectExit) => {
+    child.once('error', rejectExit);
+    child.once('exit', (code) => resolveExit(code ?? -1));
+  });
+  const started = new Promise<void>((resolveStart, rejectStart) => {
+    const poll = setInterval(() => {
+      if (transcript.includes('child-entered')) { clearInterval(poll); resolveStart(); }
+    }, 5);
+    child.once('exit', (code) => {
+      clearInterval(poll);
+      if (!transcript.includes('child-entered')) rejectStart(new Error(`Lock child exited early (${code}): ${transcript}`));
+    });
+  });
+
+  try {
+    await started;
+    let parentEntered = false;
+    let parentWaitNotified = false;
+    let parentEnteredAt = 0;
+    await withTargetSyncLock(target, async () => { parentEntered = true; parentEnteredAt = Date.now(); }, {
+      pollMs: 10,
+      onWaiting() { parentWaitNotified = true; },
+    });
+    assert.equal(parentEntered, true);
+    assert.equal(parentWaitNotified, true);
+    assert.equal(await exited, 0, transcript);
+    const childReleasedAt = Number(/child-released:(\d+)/.exec(transcript)?.[1]);
+    assert.ok(transcript.indexOf('child-entered') < transcript.indexOf('child-released:'));
+    assert.ok(parentEnteredAt >= childReleasedAt);
+  } finally {
+    if (child.exitCode === null) child.kill();
   }
 });
 
