@@ -186,7 +186,7 @@ async function main() {
   });
   if (CYLINDER_IMAGE_FAILURE) {
     await send('Network.enable');
-    await send('Network.setBlockedURLs', { urls: ['*img/taylor/era-02.webp*'] });
+    await send('Network.setBlockedURLs', { urls: ['*audio/fearless/artwork/presentation.webp*'] });
   }
   await send('Page.navigate', { url: SITE });
   await sleep(7000);
@@ -253,7 +253,7 @@ async function main() {
   })()`);
   check('播放器抽屉占满视口', drawer && JSON.parse(drawer).fills, drawer || 'missing');
   check('播放器与曲目滚轮已渲染', await evaluate("!!document.querySelector('.music-main-grid .music-track-cylinder')"));
-  check('同步歌词区域已渲染', await evaluate("!!document.querySelector('[data-music-viewport=\\\"lyrics\\\"]')"));
+  check('同步歌词区域已渲染', await evaluate("!!document.querySelector('[data-lyrics-window]')"));
   const carousel = await evaluate(`(() => {
     const strip = document.querySelector('.music-era-strip');
     const items = [...document.querySelectorAll('.music-era-item[data-era-copy="1"]')];
@@ -285,10 +285,10 @@ async function main() {
   check('可选择《The Tortured Poets Department》', selectedEra === true
     && selectedAlbumLabel.toLowerCase().includes('tortured poets'), selectedAlbumLabel || 'not selected');
   for (let attempt = 0; attempt < 20; attempt++) {
-    if (await evaluate("document.querySelectorAll('.music-lyric-wheel-row').length > 0")) break;
+    if (await evaluate("document.querySelectorAll('.music-lyric-row').length > 0")) break;
     await sleep(150);
   }
-  check('选中曲目后按需加载 LRC 歌词', await evaluate("document.querySelectorAll('.music-lyric-wheel-row').length > 0"));
+  check('选中曲目后按需加载 LRC 歌词', await evaluate("document.querySelectorAll('.music-lyric-row').length > 0"));
   const beforeNext = await evaluate("document.querySelector('.music-center-track-info h1')?.textContent?.trim()");
   await evaluate("document.querySelector('.music-control-button[aria-label=\\\"Next track\\\"]')?.click(); 'next'");
   let afterNext = beforeNext;
@@ -297,10 +297,14 @@ async function main() {
     afterNext = await evaluate("document.querySelector('.music-center-track-info h1')?.textContent?.trim()");
   }
   check('下一首切换曲目', Boolean(afterNext && beforeNext !== afterNext), `${beforeNext} → ${afterNext}`);
-  const lyricStateAfterSwitch = await evaluate("JSON.stringify({track: document.querySelector('.music-cover-composition')?.dataset.trackId, rows: document.querySelectorAll('.music-lyric-wheel-row').length})");
+  const lyricStateAfterSwitch = await evaluate("JSON.stringify({track: document.querySelector('.music-cover-composition')?.dataset.trackId, rows: document.querySelectorAll('.music-lyric-row').length})");
   check('切歌时歌词区域与当前曲目同步', Boolean(lyricStateAfterSwitch && JSON.parse(lyricStateAfterSwitch).track), lyricStateAfterSwitch || 'missing');
   await evaluate("document.querySelector('.music-play-toggle')?.click(); 'play'");
-  await sleep(900);
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const ready = await evaluate("(() => { const audio=document.querySelector('audio'); return Boolean(audio && !audio.paused && audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA); })()");
+    if (ready) break;
+    await sleep(150);
+  }
   const playerAudio = await evaluate(`(() => {
     const audio = document.querySelector('audio');
     return JSON.stringify({ playing: Boolean(audio && !audio.paused), source: audio?.currentSrc?.split('/').at(-1) || '' });
@@ -315,12 +319,14 @@ async function main() {
     if (rapidState && JSON.parse(rapidState).selected !== rapidStart && JSON.parse(rapidState).selected === JSON.parse(rapidState).loaded) break;
     await sleep(150);
   }
-  check('连续下一首后切换到新曲目且音频一致', rapidClick === 'rapid-next' && rapidState
-    && JSON.parse(rapidState).selected !== rapidStart && JSON.parse(rapidState).selected === JSON.parse(rapidState).loaded,
-  `${rapidStart} → ${rapidState || 'missing'} (${rapidClick})`);
   await sleep(900);
   const rapidEndNumber = Number(await evaluate("document.querySelector('.music-track-wheel-row[data-current=\"true\"] .music-track-wheel-number')?.textContent"));
   check('连续两次下一首确实前进两首', rapidEndNumber === rapidStartNumber + 2, `${rapidStartNumber} → ${rapidEndNumber}`);
+  const rapidFinalStateText = await evaluate("JSON.stringify({selected:document.querySelector('.music-cover-composition')?.dataset.trackId,loaded:document.querySelector('audio')?.dataset.trackId,paused:document.querySelector('audio')?.paused})");
+  const rapidFinalState = rapidFinalStateText ? JSON.parse(rapidFinalStateText) : null;
+  check('连续下一首后切换到新曲目且音频一致', rapidClick === 'rapid-next' && rapidFinalState
+    && rapidFinalState.selected !== rapidStart && rapidFinalState.selected === rapidFinalState.loaded,
+  rapidFinalState ? JSON.stringify({ changed: rapidFinalState.selected !== rapidStart, synced: rapidFinalState.selected === rapidFinalState.loaded, playing: !rapidFinalState.paused }) : 'missing');
   await evaluate("document.querySelector('.music-control-button[aria-label=\"Previous track\"]')?.click(); 'previous'");
   let previousNumber = rapidEndNumber;
   for (let attempt = 0; attempt < 25; attempt++) {
@@ -331,6 +337,77 @@ async function main() {
   check('上一首返回前一曲', previousNumber === rapidEndNumber - 1, `${rapidEndNumber} → ${previousNumber}`);
   for (let attempt = 0; attempt < 25; attempt++) {
     const ready = await evaluate("(() => { const a=document.querySelector('audio'); return !!a && !a.paused && a.volume > 0.1 && !document.querySelector('.music-center-track-info.is-changing'); })()");
+    if (ready) break;
+    await sleep(150);
+  }
+
+  const wrapMetaText = await evaluate(`(async () => {
+    const catalog = await (await fetch('/catalog.json')).json();
+    const selectedId = document.querySelector('.music-cover-composition')?.dataset.trackId;
+    const album = catalog.albums?.find((item) => item.tracks.some((track) => track.id === selectedId));
+    return JSON.stringify({
+      count: album?.tracks.length || 0,
+      index: album?.tracks.findIndex((track) => track.id === selectedId) ?? -1,
+      firstId: album?.tracks[0]?.id || '',
+    });
+  })()`);
+  const wrapMeta = wrapMetaText ? JSON.parse(wrapMetaText) : { count: 0, index: -1, firstId: '' };
+  let reachedLastTrack = wrapMeta.count > 1 && wrapMeta.index >= 0;
+  for (let index = wrapMeta.index + 1; reachedLastTrack && index < wrapMeta.count; index++) {
+    await evaluate("document.querySelector('.music-control-button[aria-label=\\\"Next track\\\"]')?.click(); 'next-to-end'");
+    let selectedStateText = '';
+    for (let attempt = 0; attempt < 50; attempt++) {
+      await sleep(100);
+      selectedStateText = await evaluate(`(() => {
+        const audio = document.querySelector('audio');
+        const selected = document.querySelector('.music-cover-composition')?.dataset.trackId;
+        const number = Number(document.querySelector('.music-track-wheel-row[data-current="true"] .music-track-wheel-number')?.textContent);
+        return JSON.stringify({ number, loaded: audio?.dataset.trackId === selected, playing: Boolean(audio && !audio.paused && audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) });
+      })()`);
+      const selectedState = selectedStateText ? JSON.parse(selectedStateText) : null;
+      if (selectedState?.number === index + 1 && selectedState.loaded && selectedState.playing) break;
+    }
+    const selectedState = selectedStateText ? JSON.parse(selectedStateText) : null;
+    reachedLastTrack = selectedState?.number === index + 1 && selectedState.loaded && selectedState.playing;
+  }
+  const lastTrackControls = await evaluate(`(() => {
+    const button = document.querySelector('.music-control-button[aria-label="Next track"]');
+    const number = Number(document.querySelector('.music-track-wheel-row[data-current="true"] .music-track-wheel-number')?.textContent);
+    return JSON.stringify({ enabled: Boolean(button && !button.disabled), number });
+  })()`);
+  const lastControls = lastTrackControls ? JSON.parse(lastTrackControls) : { enabled: false, number: 0 };
+  check('专辑末尾仍可使用下一首控制', reachedLastTrack && lastControls.enabled && lastControls.number === wrapMeta.count,
+    JSON.stringify({ atEnd: reachedLastTrack, enabled: lastControls.enabled, position: lastControls.number, total: wrapMeta.count }));
+  const endSeekText = await evaluate(`(() => {
+    const audio = document.querySelector('audio');
+    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0 || audio.paused) {
+      return JSON.stringify({ attempted: false, durationKnown: Boolean(audio && Number.isFinite(audio.duration) && audio.duration > 0), playing: Boolean(audio && !audio.paused) });
+    }
+    audio.currentTime = Math.max(0, audio.duration - 0.12);
+    return JSON.stringify({ attempted: true, durationKnown: true, playing: !audio.paused });
+  })()`);
+  const endSeek = endSeekText ? JSON.parse(endSeekText) : { attempted: false, durationKnown: false, playing: false };
+  let wrappedPlaybackText = '';
+  if (endSeek.attempted && reachedLastTrack) {
+    for (let attempt = 0; attempt < 120; attempt++) {
+      wrappedPlaybackText = await evaluate(`(() => {
+        const audio = document.querySelector('audio');
+        const selected = document.querySelector('.music-cover-composition')?.dataset.trackId;
+        const number = Number(document.querySelector('.music-track-wheel-row[data-current="true"] .music-track-wheel-number')?.textContent);
+        return JSON.stringify({ first: selected === ${JSON.stringify(wrapMeta.firstId)}, loaded: audio?.dataset.trackId === selected, playing: Boolean(audio && !audio.paused), number });
+      })()`);
+      if (wrappedPlaybackText) {
+        const state = JSON.parse(wrappedPlaybackText);
+        if (state.first && state.loaded && state.playing && state.number === 1) break;
+      }
+      await sleep(100);
+    }
+  }
+  const wrappedPlayback = wrappedPlaybackText ? JSON.parse(wrappedPlaybackText) : null;
+  check('顺序播放结束后回到本专辑第一首并继续播放', Boolean(wrappedPlayback?.first && wrappedPlayback.loaded
+    && wrappedPlayback.playing && wrappedPlayback.number === 1), JSON.stringify({ endSeek, atEnd: reachedLastTrack, final: wrappedPlayback || 'missing' }));
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const ready = await evaluate("(() => { const audio=document.querySelector('audio'); return Boolean(audio && !audio.paused && audio.volume > 0.1 && !document.querySelector('.music-center-track-info.is-changing')); })()");
     if (ready) break;
     await sleep(150);
   }
@@ -347,7 +424,7 @@ async function main() {
   const seekState = await evaluate("JSON.stringify({time:document.querySelector('audio')?.currentTime,duration:document.querySelector('audio')?.duration})");
   check('拖动进度可跳转音频', seekState && JSON.parse(seekState).duration > 0
     && JSON.parse(seekState).time > JSON.parse(seekState).duration * 0.35,
-  seekState || 'missing');
+  seekState ? JSON.stringify({ ratio: +(JSON.parse(seekState).time / JSON.parse(seekState).duration).toFixed(2), durationKnown: JSON.parse(seekState).duration > 0 }) : 'missing');
 
   await evaluate("document.querySelector('.music-volume-button')?.click(); 'open-volume'");
   for (let attempt = 0; attempt < 15; attempt++) {

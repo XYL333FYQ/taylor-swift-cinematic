@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Language } from '@/data/i18n';
-import type { MusicAlbum } from '@/data/music';
+import type { Album } from '@/data/catalog';
+import { resolveMediaUrl } from '@/data/media';
 import { wheelStep } from '@/utils/wheelStep';
 
 export function EraCarousel({
@@ -11,11 +12,11 @@ export function EraCarousel({
   onSelectAlbum,
   onToggleRotation,
 }: {
-  albums: MusicAlbum[];
+  albums: Album[];
   selectedAlbumId: string;
   language: Language;
   isRotation: boolean;
-  onSelectAlbum: (album: MusicAlbum) => void;
+  onSelectAlbum: (album: Album) => void;
   onToggleRotation: () => void;
 }) {
   const stripRef = useRef<HTMLDivElement>(null);
@@ -97,7 +98,7 @@ export function EraCarousel({
     onSelectAlbum(albums[next]);
   }, [albums, onSelectAlbum, rebaseCopyToCenter]);
 
-  const selectAlbum = useCallback((album: MusicAlbum, copy: number) => {
+  const selectAlbum = useCallback((album: Album, copy: number) => {
     const index = albums.findIndex((item) => item.id === album.id);
     if (index >= 0) targetIndexRef.current = index;
     targetCopyRef.current = copy;
@@ -188,7 +189,7 @@ export function EraCarousel({
                 aria-label={`${String(index + 1).padStart(2, '0')} ${album.name[language]} ${album.year}`}
                 onClick={() => selectAlbum(album, copy)}
               >
-                <span className="music-era-artwork"><img src={album.image} alt="" loading="lazy" /></span>
+                <span className="music-era-artwork"><img src={resolveMediaUrl(album.artwork.cover)} alt="" loading="lazy" /></span>
                 <span className="music-era-item-number">{String(index + 1).padStart(2, '0')}</span>
                 {album.year && <span className="music-era-item-year">{album.year}</span>}
                 <strong>{album.name[language]}</strong>

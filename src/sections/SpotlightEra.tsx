@@ -76,7 +76,7 @@ export function SpotlightEra({ copy }: SpotlightEraProps) {
       <div
         ref={bgImgRef}
         className="absolute inset-0 w-full h-full bg-cover bg-center will-change-transform"
-        style={{ backgroundImage: "url('./img/taylor/era-12.webp')" }}
+        style={{ backgroundImage: "url('./theme/taylor/spotlight.webp')" }}
       >
         {/* Dark stage gradient overlays */}
         <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/30 to-black/60" />

@@ -17,12 +17,12 @@ after(async () => {
 async function fixtureRoot(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'audio-library-fixture-'));
   temporaryRoots.push(root);
-  await fs.mkdir(path.join(root, 'public', 'audio'), { recursive: true });
+  await fs.mkdir(path.join(root, 'audio'), { recursive: true });
   return root;
 }
 
 async function put(root: string, relativePath: string, content = 'fixture'): Promise<string> {
-  const file = path.join(root, 'public', 'audio', ...relativePath.split('/'));
+  const file = path.join(root, 'audio', ...relativePath.split('/'));
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, content);
   return file;
@@ -34,6 +34,15 @@ function album(root: string, folder: string) {
 }
 
 describe('build-time audio library discovery', () => {
+  it('keeps a configured album visible when its private audio files are absent', async () => {
+    const root = await fixtureRoot();
+    await put(root, 'Editorial/album.json', JSON.stringify({ id: 'editorial', name: 'Editorial', releaseDate: '2026' }));
+    await put(root, 'Editorial/artwork/cover.webp');
+    const found = await album(root, 'Editorial');
+    assert.equal(found?.tracks.length, 0);
+    assert.equal(found?.releaseDate, '2026');
+    assert.match(found?.artwork.presentation ?? '', /artwork\/cover\.webp$/);
+  });
   it('discovers nested audio without requiring lyrics, artwork, or a manifest', async () => {
     const root = await fixtureRoot();
     await put(root, 'Audio Only/A/B/random.flac');
@@ -70,7 +79,7 @@ describe('build-time audio library discovery', () => {
     const nested = await album(root, 'Nested');
     const split = await album(root, 'Split');
     assert.match(same?.tracks[0]?.lyricsUrl ?? '', /01%20Song\.lrc$/);
-    assert.match(same?.image ?? '', /01%20Song\.jpg$/);
+    assert.match(same?.artwork.cover ?? '', /01%20Song\.jpg$/);
     assert.equal(same?.tracks[0]?.artwork, undefined);
     assert.match(nested?.tracks[0]?.lyricsUrl ?? '', /Song\/song\.lrc$/);
     assert.match(nested?.tracks[0]?.artwork ?? '', /Song\/song\.jpeg$/);
@@ -149,8 +158,8 @@ describe('build-time audio library discovery', () => {
     const first = await album(root, 'Pairs');
     assert.deepEqual(first?.tracks.map((track) => track.lyricsUrl?.split('/').at(-1)), ['a.lrc', 'b.lrc']);
 
-    const oldAudio = path.join(root, 'public', 'audio', 'Pairs', 'Music', 'a.flac');
-    const movedAudio = path.join(root, 'public', 'audio', 'Pairs', 'Moved', 'a.flac');
+    const oldAudio = path.join(root, 'audio', 'Pairs', 'Music', 'a.flac');
+    const movedAudio = path.join(root, 'audio', 'Pairs', 'Moved', 'a.flac');
     await fs.mkdir(path.dirname(movedAudio), { recursive: true });
     await fs.rename(oldAudio, movedAudio);
     const second = await album(root, 'Pairs');
@@ -192,7 +201,7 @@ describe('build-time audio library discovery', () => {
     await put(root, 'Covers/b.flac');
     await put(root, 'Covers/cover.jpg');
     const found = await album(root, 'Covers');
-    assert.match(found?.image ?? '', /cover\.jpg$/);
+    assert.match(found?.artwork.cover ?? '', /cover\.jpg$/);
     assert.ok(found?.tracks.every((track) => track.artwork === undefined));
   });
 
@@ -201,7 +210,7 @@ describe('build-time audio library discovery', () => {
     const original = await put(root, 'Stable/A/song.flac');
     const reader: AudioMetadataReader = async () => ({ title: 'Song', discNumber: 2, trackNumber: 7 });
     const before = (await scanAudioLibrary(root, { metadataReader: reader }))[0]?.tracks[0];
-    const moved = path.join(root, 'public', 'audio', 'Stable', 'B', 'C', 'song.flac');
+    const moved = path.join(root, 'audio', 'Stable', 'B', 'C', 'song.flac');
     await fs.mkdir(path.dirname(moved), { recursive: true });
     await fs.rename(original, moved);
     const afterMove = (await scanAudioLibrary(root, { metadataReader: reader }))[0]?.tracks[0];
@@ -223,7 +232,7 @@ describe('build-time audio library discovery', () => {
     await put(root, 'Lazy/song.flac');
     await put(root, 'Lazy/song.lrc', '[00:01.00] unique fixture lyric');
     await generateAudioLibrary(root, { metadataReader: async () => ({}) });
-    const source = await fs.readFile(path.join(root, 'src', 'data', 'music.generated.ts'), 'utf8');
+    const source = await fs.readFile(path.join(root, 'catalog.json'), 'utf8');
     assert.match(source, /"lyricsUrl": "audio\/Lazy\/song\.lrc"/);
     assert.doesNotMatch(source, /unique fixture lyric/);
     assert.equal(source.includes(root), false);
@@ -279,11 +288,11 @@ describe('build-time audio library discovery', () => {
     const found = await album(root, 'Manifest');
     assert.equal(found?.id, 'stable-manifest-id');
     assert.deepEqual(found?.name, { en: 'Manifest Album', zh: '清单专辑' });
-    assert.equal(found?.year, '2020');
+    assert.equal(found?.releaseDate, '2020');
     assert.equal(found?.tracks[0]?.title, 'Explicit Title');
     assert.equal(found?.tracks[0]?.artist, 'Explicit Artist');
     assert.match(found?.tracks[0]?.lyricsUrl ?? '', /Lyrics\/custom\.lrc$/);
-    assert.match(found?.image ?? '', /Images\/cover\.png$/);
+    assert.match(found?.artwork.cover ?? '', /Images\/cover\.png$/);
   });
 
   it('preserves manifest album id after renaming its folder', async () => {
@@ -291,7 +300,7 @@ describe('build-time audio library discovery', () => {
     await put(root, 'Before/song.flac');
     await put(root, 'Before/album.json', JSON.stringify({ id: 'fixed-album' }));
     const first = await album(root, 'Before');
-    await fs.rename(path.join(root, 'public', 'audio', 'Before'), path.join(root, 'public', 'audio', 'After'));
+    await fs.rename(path.join(root, 'audio', 'Before'), path.join(root, 'audio', 'After'));
     const second = await album(root, 'After');
     assert.equal(first?.id, 'fixed-album');
     assert.equal(second?.id, first?.id);
@@ -308,7 +317,7 @@ describe('build-time audio library discovery', () => {
     }));
     const found = await album(root, 'Safe');
     assert.equal(found?.tracks[0]?.lyricsUrl, undefined);
-    assert.equal(found?.artworkLevel, 'fallback');
+    assert.equal(found?.artwork.cover, './theme/taylor/finale.webp');
     await put(root, 'Safe/album.json', JSON.stringify({ tracks: 'bad shape' }));
     assert.equal((await album(root, 'Safe'))?.tracks.length, 1);
     await put(root, 'preview-catalog.json', 'null');
@@ -349,11 +358,11 @@ describe('build-time audio library discovery', () => {
     const root = await fixtureRoot();
     await put(root, 'Temporary/01-old.mp3');
     assert.equal((await album(root, 'Temporary'))?.tracks.length, 1);
-    await fs.rename(path.join(root, 'public', 'audio', 'Temporary'), path.join(root, 'public', 'audio', 'Renamed Album'));
+    await fs.rename(path.join(root, 'audio', 'Temporary'), path.join(root, 'audio', 'Renamed Album'));
     const afterRename = await scanAudioLibrary(root);
     assert.equal(afterRename.some((item) => item.folder === 'Temporary'), false);
     assert.equal(afterRename.some((item) => item.folder === 'Renamed Album'), true);
-    await fs.rm(path.join(root, 'public', 'audio', 'Renamed Album'), { recursive: true });
+    await fs.rm(path.join(root, 'audio', 'Renamed Album'), { recursive: true });
     assert.equal((await scanAudioLibrary(root)).some((item) => item.folder === 'Renamed Album'), false);
   });
 });
@@ -378,7 +387,7 @@ describe('Vite watcher rescans the complete audio tree', () => {
     });
     await server.listen();
     try {
-      const generatedFile = path.join(root, 'src', 'data', 'music.generated.ts');
+      const generatedFile = path.join(root, 'catalog.json');
       const waitFor = async (predicate: (source: string) => boolean) => {
         const expires = Date.now() + 12000;
         while (Date.now() < expires) {
@@ -402,7 +411,7 @@ describe('Vite watcher rescans the complete audio tree', () => {
       await waitFor((source) => source.includes('start'));
       await put(root, 'Initial/Nested/temporary.flac');
       await waitFor((source) => source.includes('temporary.flac'));
-      await fs.rm(path.join(root, 'public', 'audio', 'Initial', 'Nested', 'temporary.flac'));
+      await fs.rm(path.join(root, 'audio', 'Initial', 'Nested', 'temporary.flac'));
       const withoutTemporary = await waitFor((source) => source.includes('start.flac') && !source.includes('temporary.flac'));
       assert.equal(withoutTemporary.includes('temporary.flac'), false);
 
@@ -411,23 +420,24 @@ describe('Vite watcher rescans the complete audio tree', () => {
       await put(root, 'New Album/Lyrics/song.lrc', '[00:00.00] first');
       await waitFor((source) => source.includes('Lyrics/song.lrc'));
       const lyricScans = scanMessages.length;
-      await fs.writeFile(path.join(root, 'public', 'audio', 'New Album', 'Lyrics', 'song.lrc'), '[00:00.00] edited');
+      await fs.writeFile(path.join(root, 'audio', 'New Album', 'Lyrics', 'song.lrc'), '[00:00.00] edited');
       await waitForRescan(lyricScans);
       await put(root, 'New Album/Artwork/song.jpg');
       await waitFor((source) => source.includes('Artwork/song.jpg'));
       const priorScans = scanMessages.length;
-      await fs.writeFile(path.join(root, 'public', 'audio', 'New Album', 'Artwork', 'song.jpg'), 'updated fixture image');
+      await fs.writeFile(path.join(root, 'audio', 'New Album', 'Artwork', 'song.jpg'), 'updated fixture image');
       await waitForRescan(priorScans);
 
-      await fs.writeFile(path.join(root, 'public', 'audio', 'New Album', 'album.json'), JSON.stringify({ id: 'stable-new-album', name: 'Named Album' }));
+      await fs.writeFile(path.join(root, 'audio', 'New Album', 'album.json'), JSON.stringify({ id: 'stable-new-album', name: 'Named Album' }));
       await waitFor((source) => source.includes('stable-new-album') && source.includes('Named Album'));
-      const originalAlbum = path.join(root, 'public', 'audio', 'New Album');
-      const movedAlbum = path.join(root, 'public', 'audio', 'Moved Album');
+      const originalAlbum = path.join(root, 'audio', 'New Album');
+      const movedAlbum = path.join(root, 'audio', 'Moved Album');
       await fs.cp(originalAlbum, movedAlbum, { recursive: true });
       await fs.rm(originalAlbum, { recursive: true });
-      const moved = await waitFor((source) => source.includes('stable-new-album') && source.includes('Moved Album'));
+      const moved = await waitFor((source) => source.includes('stable-new-album')
+        && source.includes('Moved Album') && !source.includes('New Album'));
       assert.equal(moved.includes('New Album'), false);
-      await fs.rm(path.join(root, 'public', 'audio', 'Moved Album'), { recursive: true });
+      await fs.rm(path.join(root, 'audio', 'Moved Album'), { recursive: true });
       const removed = await waitFor((source) => source.includes('stable-new-album') === false);
       assert.equal(removed.includes('Moved Album'), false);
     } finally {

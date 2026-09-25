@@ -12,7 +12,7 @@ interface CylinderPortalProps {
   imageSrc?: string;
 }
 
-export function CylinderPortal({ copy, imageSrc = './img/taylor/era-06.webp' }: CylinderPortalProps) {
+export function CylinderPortal({ copy, imageSrc = './theme/taylor/portal.webp' }: CylinderPortalProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const imageFrameRef = useRef<HTMLDivElement>(null);
   const copyBlockRef = useRef<HTMLDivElement>(null);

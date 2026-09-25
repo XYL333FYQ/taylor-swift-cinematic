@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Language } from '@/data/i18n';
-import type { MusicTrack } from '@/data/music';
+import type { Track } from '@/data/catalog';
 import { wheelStep } from '@/utils/wheelStep';
 import { MusicIcon } from './PlaybackControls';
 
 interface TrackCylinderProps {
-  tracks: MusicTrack[];
+  tracks: Track[];
   currentTrackId: string | null;
   isPlaying: boolean;
   language: Language;
-  onSelectTrack: (track: MusicTrack, source: 'click' | 'scroll') => void;
+  onSelectTrack: (track: Track, source: 'click' | 'scroll') => void;
 }
 
 export function TrackCylinder({ tracks, currentTrackId, isPlaying, language, onSelectTrack }: TrackCylinderProps) {

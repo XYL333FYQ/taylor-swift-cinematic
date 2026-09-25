@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { Language } from '@/data/i18n';
-import { MUSIC_LIBRARY } from '@/data/music';
+import { useCatalog } from '@/data/catalog';
+import { resolveMediaUrl } from '@/data/media';
 import { EraCarousel } from '@/components/music/EraCarousel';
 import { PlayerStage } from '@/components/music/PlayerStage';
 import { MusicIcon } from '@/components/music/PlaybackControls';
@@ -26,6 +27,7 @@ export function MusicPlayer({
   onOpen,
   onClose,
 }: MusicPlayerProps) {
+  const { albums } = useCatalog();
   const {
     audioRef,
     selectedAlbum,
@@ -82,7 +84,7 @@ export function MusicPlayer({
             <header className="music-player-topbar">
               <div>
                 <p className="section-kicker">{language === 'zh' ? '歌与时代' : 'THE SONGS WE KEEP'}</p>
-                <p className="music-player-heading">{language === 'zh' ? `${MUSIC_LIBRARY.length} 个时代，一首一首听过去。` : `${MUSIC_LIBRARY.length} eras, one song at a time.`}</p>
+                <p className="music-player-heading">{language === 'zh' ? `${albums.length} 个时代，一首一首听过去。` : `${albums.length} eras, one song at a time.`}</p>
               </div>
               <button type="button" className="music-close-button" onClick={onClose} aria-label={language === 'zh' ? '关闭播放器' : 'Close player'}><MusicIcon name="close" /></button>
             </header>
@@ -120,7 +122,7 @@ export function MusicPlayer({
             )}
 
             <EraCarousel
-              albums={MUSIC_LIBRARY}
+              albums={albums}
               selectedAlbumId={selectedAlbum.id}
               language={language}
               isRotation={isRotation}
@@ -140,7 +142,7 @@ export function MusicPlayer({
             aria-label={language === 'zh' ? '打开播放器' : 'Open player'}
             title={language === 'zh' ? '打开播放器' : 'Open player'}
           >
-            <img src={selectedAlbum.image} alt="" />
+            <img src={resolveMediaUrl(selectedAlbum.artwork.cover)} alt="" />
             <span className="music-dock-cover-veil" aria-hidden="true">♫</span>
           </button>
           <div className="music-dock-body">

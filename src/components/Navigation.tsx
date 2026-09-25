@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Language } from '@/data/i18n';
-import { ERAS } from '@/data/eras';
+import { useCatalog } from '@/data/catalog';
 
 interface NavigationProps {
   language: Language;
@@ -21,6 +21,7 @@ export function Navigation({
   onToggleMusic,
   brandText,
 }: NavigationProps) {
+  const { albums } = useCatalog();
   const [hasScrolled, setHasScrolled] = useState(false);
 
   useEffect(() => {
@@ -81,7 +82,7 @@ export function Navigation({
           }`}
           aria-pressed={isMusicPlaying}
           aria-label={language === 'zh' ? '切换背景音乐' : 'Toggle background music'}
-          title={language === 'zh' ? `${ERAS.length} 个时代的歌曲轮换` : `${ERAS.length} eras on rotation`}
+          title={language === 'zh' ? `${albums.length} 个时代的歌曲轮换` : `${albums.length} eras on rotation`}
         >
           <span
             className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${

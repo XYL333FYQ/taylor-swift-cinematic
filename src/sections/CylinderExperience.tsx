@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Mesh, Program, Renderer, Texture, Transform } from 'ogl';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CustomEase } from 'gsap/CustomEase';
 import type { SiteCopy } from '@/data/i18n';
-import { ERAS } from '@/data/eras';
+import { useCatalog } from '@/data/catalog';
+import { resolveMediaUrl } from '@/data/media';
 import {
   createCylinderGeometry,
   createParticleGeometry,
@@ -29,7 +30,6 @@ if (typeof window !== 'undefined') {
   }
 }
 
-const CYLINDER_IMAGES = ERAS.map((era) => era.image);
 
 interface CylinderExperienceProps {
   copy: SiteCopy['cylinder'];
@@ -59,7 +59,7 @@ function isWebGLAvailable() {
  * 无 WebGL 时的静态替代：把原本由 3D 圆柱承载的四段叙事和已发现的专辑
  * 用排版与横向画廊呈现，保持同一套视觉语言。
  */
-function CylinderFallback({ copy }: { copy: SiteCopy['cylinder'] }) {
+function CylinderFallback({ copy, images }: { copy: SiteCopy['cylinder']; images: string[] }) {
   const rootRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -113,7 +113,7 @@ function CylinderFallback({ copy }: { copy: SiteCopy['cylinder'] }) {
       ))}
 
       <div className="cylinder-fallback-gallery">
-        {CYLINDER_IMAGES.map((src, index) => (
+        {images.map((src, index) => (
           <figure className="cylinder-fallback-frame" key={src}>
             <img src={src} alt="" loading="lazy" />
             <figcaption>{String(index + 1).padStart(2, '0')}</figcaption>
@@ -125,6 +125,8 @@ function CylinderFallback({ copy }: { copy: SiteCopy['cylinder'] }) {
 }
 
 export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) {
+  const { albums } = useCatalog();
+  const cylinderImages = useMemo(() => albums.map((album) => resolveMediaUrl(album.artwork.presentation)), [albums]);
   const didNotifyLoadedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -207,7 +209,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       const height = window.innerHeight;
       const isMobile = width < 768;
       const isTablet = width >= 768 && width < 1024;
-      const radius = isMobile ? 1.9 : isTablet ? 2.3 : 2.5;
+      const radius = (isMobile ? 1.9 : isTablet ? 2.3 : 2.5) * Math.max(1, cylinderImages.length / 12);
       const fov = isMobile ? 52 : 45;
       // 圆柱默认占画面宽度的比例。手机上允许略微出血，反而更有临场感。
       const coverage = isMobile ? 1.05 : isTablet ? 0.72 : 0.62;
@@ -224,19 +226,20 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       };
     };
 
-    const dimensions = getResponsiveConfig();
+    const baseDimensions = getResponsiveConfig();
+    let dimensions = baseDimensions;
     const camera = new Camera(gl, {
-      fov: dimensions.fov,
+      fov: baseDimensions.fov,
       aspect: window.innerWidth / window.innerHeight,
     });
-    camera.position.set(0, 0, dimensions.cameraZ);
-    cameraAnimRef.current.z = dimensions.cameraZ;
+    camera.position.set(0, 0, baseDimensions.cameraZ);
+    cameraAnimRef.current.z = baseDimensions.cameraZ;
     cameraRef.current = camera;
 
     const scene = new Transform();
     const cylinderGeometry = createCylinderGeometry(gl, {
-      radius: dimensions.radius,
-      height: dimensions.height,
+      radius: baseDimensions.radius,
+      height: baseDimensions.height,
       radialSegments: 64,
       heightSegments: 1,
     });
@@ -247,8 +250,10 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
     const singleWidth = 1024;
     const singleHeight = 1024;
     const hardwareLimit = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-    const safeMax = dimensions.isMobile ? 2048 : Math.min(hardwareLimit, 8192);
-    const totalOriginalWidth = singleWidth * CYLINDER_IMAGES.length;
+    const safeMax = baseDimensions.isMobile
+      ? Math.min(hardwareLimit, cylinderImages.length > 12 ? 4096 : 2048)
+      : Math.min(hardwareLimit, 8192);
+    const totalOriginalWidth = singleWidth * cylinderImages.length;
     const scaleFactor = Math.min(1, safeMax / totalOriginalWidth);
 
     textureCanvas.width = Math.floor(totalOriginalWidth * scaleFactor);
@@ -266,16 +271,26 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       const width = window.innerWidth;
       const height = window.innerHeight;
       const next = getResponsiveConfig();
+      dimensions = next;
 
       rendererRef.current.setSize(width, height);
       cameraRef.current.perspective({
         fov: next.fov,
         aspect: width / height,
       });
+      const radiusScale = next.radius / baseDimensions.radius;
+      const heightScale = next.height / baseDimensions.height;
+      cylinderRef.current?.scale.set(radiusScale, heightScale, radiusScale);
+      particlesRef.current.forEach((particle) => {
+        particle.scale.set(radiusScale, heightScale, radiusScale);
+      });
+      if (!animationContext) cameraAnimRef.current.z = next.cameraZ;
       ScrollTrigger.refresh();
     };
 
-    CYLINDER_IMAGES.forEach((src, idx) => {
+    window.addEventListener('resize', handleResize);
+
+    cylinderImages.forEach((src, idx) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
@@ -283,11 +298,11 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
         imageObjects[idx] = img;
         loadedCount += 1;
 
-        if (loadedCount === CYLINDER_IMAGES.length) {
+        if (loadedCount === cylinderImages.length) {
           // Draw all images onto panorama texture strip
           imageObjects.forEach((imageItem, imageIdx) => {
-            const x0 = Math.floor((imageIdx / CYLINDER_IMAGES.length) * textureCanvas.width);
-            const x1 = Math.floor(((imageIdx + 1) / CYLINDER_IMAGES.length) * textureCanvas.width);
+            const x0 = Math.floor((imageIdx / cylinderImages.length) * textureCanvas.width);
+            const x1 = Math.floor(((imageIdx + 1) / cylinderImages.length) * textureCanvas.width);
             drawImageCover(ctx, imageItem, x0, 0, x1 - x0, textureCanvas.height);
           });
 
@@ -313,23 +328,28 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
           });
 
           const cylinder = new Mesh(gl, { geometry: cylinderGeometry, program });
+          cylinder.scale.set(
+            dimensions.radius / baseDimensions.radius,
+            dimensions.height / baseDimensions.height,
+            dimensions.radius / baseDimensions.radius,
+          );
           cylinder.setParent(scene);
           cylinder.rotation.y = 0.5;
           cylinderRef.current = cylinder;
 
           // Create particle trails
-          const numParticles = dimensions.isMobile ? 8 : 16;
+          const numParticles = baseDimensions.isMobile ? 8 : 16;
           for (let i = 0; i < numParticles; i++) {
             const { geometry: pGeom, userData } = createParticleGeometry(
               gl,
               {
                 numParticles,
-                particleRadius: dimensions.radius * 1.35,
+                particleRadius: baseDimensions.radius * 1.35,
                 segments: 20,
                 angleSpan: 0.35,
               },
               i,
-              dimensions.height
+              baseDimensions.height
             );
 
             const pProgram = new Program(gl, {
@@ -348,6 +368,11 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
               program: pProgram,
               mode: gl.LINE_STRIP,
             }) as ParticleMesh;
+            pMesh.scale.set(
+              dimensions.radius / baseDimensions.radius,
+              dimensions.height / baseDimensions.height,
+              dimensions.radius / baseDimensions.radius,
+            );
             pMesh.userData = userData;
             pMesh.setParent(scene);
             particlesRef.current.push(pMesh);
@@ -371,23 +396,23 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
             tl.to(cameraAnimRef.current, {
               x: 0,
               y: 0,
-              z: dimensions.cameraZ,
+              z: () => dimensions.cameraZ,
               duration: 1.5,
               ease: 'power2.inOut',
             })
               // 25% -> 50%: Elevation & looking down
               .to(cameraAnimRef.current, {
-                x: 0.4,
-                y: 3.6,
-                z: dimensions.cameraZ * 0.72,
+                x: () => dimensions.radius * 0.16,
+                y: () => dimensions.height * 1.8,
+                z: () => dimensions.cameraZ * 0.72,
                 duration: 2.2,
                 ease: 'cinematicFlow',
               })
               // 50% -> 75%: Close glide along cylinder wall
               .to(cameraAnimRef.current, {
-                x: 1.1,
-                y: 1.2,
-                z: dimensions.radius * 1.35,
+                x: () => dimensions.radius * 0.44,
+                y: () => dimensions.height * 0.6,
+                z: () => dimensions.radius * 1.35,
                 duration: 2.5,
                 ease: 'power1.inOut',
               })
@@ -395,7 +420,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
               .to(cameraAnimRef.current, {
                 x: 0,
                 y: 0,
-                z: dimensions.radius + 1.1,
+                z: () => dimensions.radius + 1.1,
                 duration: 2.0,
                 ease: 'power2.out',
               })
@@ -403,7 +428,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
               .to(cameraAnimRef.current, {
                 x: 0,
                 y: 0,
-                z: dimensions.radius + 0.15,
+                z: () => dimensions.radius + 0.15,
                 duration: 1.2,
                 ease: 'power3.in',
               });
@@ -517,15 +542,13 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
           };
 
           renderLoop();
-          window.addEventListener('resize', handleResize);
-
 
         }
       };
       img.onerror = () => {
         if (isDestroyed || hasImageFailed) return;
         console.warn('Cylinder image failed; trying the existing stage fallback:', src);
-        if (src === './img/taylor/stage.webp') {
+        if (src === resolveMediaUrl('./theme/taylor/finale.webp')) {
           fallbackToStatic();
           return;
         }
@@ -534,7 +557,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
           console.error('Cylinder stage fallback failed; using the static layout.');
           fallbackToStatic();
         };
-        img.src = './img/taylor/stage.webp';
+        img.src = resolveMediaUrl('./theme/taylor/finale.webp');
       };
       img.src = src;
     });
@@ -550,9 +573,9 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       particlesRef.current.forEach((particle) => { particle.geometry.remove(); particle.program.remove(); });
       particlesRef.current = [];
     };
-  }, [onLoaded, hasFailed]);
+  }, [onLoaded, hasFailed, cylinderImages]);
 
-  if (hasFailed) return <CylinderFallback copy={copy} />;
+  if (hasFailed) return <CylinderFallback copy={copy} images={cylinderImages} />;
 
   return (
     <>

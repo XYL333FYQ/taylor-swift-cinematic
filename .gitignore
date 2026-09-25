@@ -14,11 +14,14 @@ dist-ssr
 __pycache__/
 *.py[cod]
 
-# Keep personal audio, lyrics, artwork, and generated local catalogs off GitHub.
-public/audio/*
-!public/audio/README.md
-!public/audio/sources.json
-src/data/music.generated.ts
+# Local master content and sync state never enter Git.
+/audio/
+/public/audio/
+/.music-cache/
+/catalog.json
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -32,6 +35,8 @@ src/data/music.generated.ts
 *.sw?
 
 .vercel
+/.wrangler/
+/.dev.vars
 
 # Local browser captures and design backups
 .playwright-cli/

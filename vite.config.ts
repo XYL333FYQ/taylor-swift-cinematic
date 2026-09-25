@@ -7,8 +7,7 @@ import { audioLibraryPlugin } from './plugins/audio-library-vite';
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
-  // audioLibraryPlugin 会在启动与构建前扫描 public/audio，自动生成曲目清单。
-  // 往 public/audio/<专辑名>/ 里丢歌即可，不需要跑命令、不需要改代码。
+  // Dev serves local audio outside public; production fetches the R2 catalog at runtime.
   plugins: [audioLibraryPlugin(), react(), tailwindcss()],
   resolve: {
     alias: {

@@ -1,5 +1,5 @@
 export interface LyricLine {
-  timeMs: number;
+  timeMs?: number;
   text: string;
   translation?: string;
 }
@@ -15,7 +15,7 @@ export function parseLyrics(source?: string): LyricLine[] {
   if (!source?.trim()) return [];
 
   let offsetMs = 0;
-  const parsed: Array<LyricLine & { order: number }> = [];
+  const parsed: Array<{ timeMs: number; text: string; order: number }> = [];
   const rows = source.replace(/^\uFEFF/, '').split(/\r\n|\n|\r/);
 
   for (const [order, rawRow] of rows.entries()) {
@@ -45,6 +45,13 @@ export function parseLyrics(source?: string): LyricLine[] {
     }
   }
 
+  if (!parsed.length) {
+    return rows
+      .map((row) => row.trim())
+      .filter((row) => row && !/^\[(?:ar|ti|al|by|re|ve|offset|length|la|kana):[^\]]*\]$/i.test(row))
+      .map((text) => ({ text }));
+  }
+
   parsed.sort((a, b) => a.timeMs - b.timeMs || a.order - b.order);
 
   const lines: LyricLine[] = [];
@@ -60,14 +67,15 @@ export function parseLyrics(source?: string): LyricLine[] {
 }
 
 export function findActiveLyric(lines: LyricLine[], currentTimeMs: number) {
-  if (!lines.length) return -1;
+  if (!lines.length || typeof lines[0].timeMs !== 'number') return -1;
 
   let low = 0;
   let high = lines.length - 1;
   let active = -1;
   while (low <= high) {
     const middle = (low + high) >> 1;
-    if (lines[middle].timeMs <= currentTimeMs) {
+    const timeMs = lines[middle].timeMs;
+    if (typeof timeMs === 'number' && timeMs <= currentTimeMs) {
       active = middle;
       low = middle + 1;
     } else {

@@ -52,7 +52,7 @@ export function FinaleOutro({ copy, onRestart }: FinaleOutroProps) {
       {/* Background cinematic portrait */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
         <img
-          src="./img/taylor/stage.webp"
+          src="./theme/taylor/finale.webp"
           alt="Taylor Swift finale atmosphere"
           className="w-full h-full object-cover filter grayscale brightness-[0.28] contrast-[1.1] scale-105"
         />

@@ -1,10 +1,10 @@
 import { useState, type CSSProperties, type RefObject } from 'react';
-import type { EraData } from '@/data/eras';
-import { ERAS } from '@/data/eras';
+import { useCatalog } from '@/data/catalog';
+import { resolveMediaUrl } from '@/data/media';
 import type { Language } from '@/data/i18n';
-import type { MusicAlbum, MusicTrack } from '@/data/music';
+import type { Album, Track } from '@/data/catalog';
 import type { LyricLine } from '@/utils/lyrics';
-import { LyricsCylinder } from './LyricsCylinder';
+import { LyricsPanel } from './LyricsPanel';
 import { PlaybackControls, type RepeatMode } from './PlaybackControls';
 import { TrackCylinder } from './TrackCylinder';
 import { VinylRecord } from './VinylRecord';
@@ -36,10 +36,10 @@ export function PlayerStage({
   onVolumeChange,
   onToggleMute,
 }: {
-  era: EraData;
-  album: MusicAlbum;
-  track: MusicTrack;
-  tracks: MusicTrack[];
+  era: Album;
+  album: Album;
+  track: Track;
+  tracks: Track[];
   language: Language;
   currentTime: number;
   duration: number;
@@ -53,7 +53,7 @@ export function PlayerStage({
   error: string | null;
   hasPrevious: boolean;
   hasNext: boolean;
-  onSelectTrack: (track: MusicTrack, source: 'click' | 'scroll') => void;
+  onSelectTrack: (track: Track, source: 'click' | 'scroll') => void;
   onCyclePlayMode: () => void;
   onPrevious: () => void;
   onTogglePlayback: () => void;
@@ -63,12 +63,14 @@ export function PlayerStage({
   onToggleMute: () => void;
 }) {
   const zh = language === 'zh';
+  const { albums } = useCatalog();
   const text = era.description[language];
   const [mobileView, setMobileView] = useState<'player' | 'tracks' | 'lyrics'>('player');
+  const coverUrl = resolveMediaUrl(album.artwork.cover);
 
   return (
     <main className="music-main-grid" data-mobile-view={mobileView} style={{ '--music-era-glow': era.colorAccent } as CSSProperties}>
-      <div className="music-stage-ambience" aria-hidden="true" style={{ '--music-ambience-image': `url("${album.image}")` } as CSSProperties} />
+      <div className="music-stage-ambience" aria-hidden="true" style={{ '--music-ambience-image': `url("${coverUrl}")` } as CSSProperties} />
       <nav className="music-mobile-nav" aria-label={zh ? '播放器内容' : 'Player sections'}>
         {([
           ['player', zh ? '播放' : 'PLAYER'],
@@ -80,7 +82,7 @@ export function PlayerStage({
       </nav>
       <section className={`music-side-panel music-left-panel ${isChangingTrack ? 'is-changing' : ''}`} aria-label={zh ? '时代与曲目' : 'Era and tracks'}>
         <div className="music-side-intro music-era-intro" key={era.id}>
-          <p className="section-kicker">{zh ? '时代档案' : 'ERA ARCHIVE'} · {era.number} / {ERAS.length}</p>
+          <p className="section-kicker">{zh ? '时代档案' : 'ERA ARCHIVE'} · {era.number} / {albums.length}</p>
           <div className="music-era-title-lockup"><span>{era.number}</span>{era.year && <><i aria-hidden="true">/</i><small>{era.year}</small></>}</div>
           <h2>{era.name[language]}</h2>
           {text && <p className="music-era-description">{text}</p>}
@@ -91,15 +93,15 @@ export function PlayerStage({
       <section className="music-center-column" aria-label={zh ? '当前播放' : 'Now playing'}>
         <div className={`music-cover-composition ${isChangingTrack ? 'is-changing' : ''}`} data-track-id={track.id}>
           <div className="music-cover-artwork">
-            <img src={album.image} alt={`${album.name[language]} album cover`} />
+            <img src={coverUrl} alt={`${album.name[language]} album cover`} />
             <span className="music-cover-veil" aria-hidden="true" />
           </div>
-          <VinylRecord cover={album.image} label={zh ? `${album.name[language]} 黑胶唱片` : `${album.name[language]} vinyl record`} vinylRef={vinylRef} />
+          <VinylRecord cover={coverUrl} label={zh ? `${album.name[language]} 黑胶唱片` : `${album.name[language]} vinyl record`} vinylRef={vinylRef} />
         </div>
 
         <div className={`music-center-track-info ${isChangingTrack ? 'is-changing' : ''}`} aria-live="polite">
           <h1>{track.title}</h1>
-          <p>{album.artist ?? track.artist ?? 'Taylor Swift'} · {album.name[language]}</p>
+          <p>{album.artist ?? track.artist ?? ''}{(album.artist || track.artist) && ' · '}{album.name[language]}</p>
         </div>
 
         <PlaybackControls
@@ -124,7 +126,7 @@ export function PlayerStage({
       </section>
 
       <section className={`music-side-panel music-right-panel ${isChangingTrack ? 'is-changing' : ''}`} aria-label={zh ? '歌词' : 'Lyrics'}>
-        <LyricsCylinder lines={lyrics} currentTime={currentTime} language={language} onSeek={onSeek} />
+        <LyricsPanel key={track.id} lines={lyrics} currentTime={currentTime} language={language} onSeek={onSeek} />
         {!lyrics.length && (
           <div className="music-lyrics-empty" data-lyrics-empty="true" role="status" aria-label={zh ? '暂无歌词' : 'No lyrics available'}>
             <span className="music-lyrics-empty-line" aria-hidden="true" />

@@ -2,15 +2,22 @@
   "name": "taylor-swift-cinematic-demo",
   "private": true,
   "version": "0.0.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "pnpm generate:audio && tsc -b && vite build",
+    "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "pnpm generate:audio && tsc -b --pretty false",
+    "typecheck": "tsc -b --pretty false",
     "generate:audio": "node --experimental-strip-types -e \"import('./plugins/audio-library.ts').then(m => m.generateAudioLibrary(process.cwd()))\"",
-    "test:audio": "node --experimental-strip-types --test scripts/test-audio-library.ts"
+    "music:sync": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/music-sync.ts",
+    "music:watch": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/music-watch.ts",
+    "music:prune": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/music-prune.ts",
+    "test:audio": "node --experimental-strip-types --test scripts/test-audio-library.ts",
+    "test:music-sync": "node --experimental-strip-types --test scripts/test-music-sync.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",
@@ -21,6 +28,7 @@
     "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1139.0",
     "@eslint/js": "^9.30.1",
     "@types/node": "^24.9.1",
     "@types/react": "^19.1.8",

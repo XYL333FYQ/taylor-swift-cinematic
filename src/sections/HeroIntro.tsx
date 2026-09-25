@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import type { Language, SiteCopy } from '@/data/i18n';
-import { ERAS, ERA_YEAR_RANGE } from '@/data/eras';
+import { useCatalog } from '@/data/catalog';
 
 interface HeroIntroProps {
   copy: SiteCopy['hero'];
@@ -10,6 +10,7 @@ interface HeroIntroProps {
   onPlayRotation: () => void;
 }
 export function HeroIntro({ copy, language, onExploreClick, onPlayRotation }: HeroIntroProps) {
+  const { albums, yearRange } = useCatalog();
   const sectionRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -22,19 +23,19 @@ export function HeroIntro({ copy, language, onExploreClick, onPlayRotation }: He
   return (
     <section ref={sectionRef} className="editorial-hero" aria-label={copy.title}>
       <div className="hero-portrait" aria-hidden="true">
-        <img src="./img/taylor/era-06.webp" alt="" fetchPriority="high" />
+        <img src="./theme/taylor/hero.webp" alt="" fetchPriority="high" />
       </div>
       <div className="hero-shade" />
-      <div className="hero-edition hero-reveal"><span>THE SONGS WE KEEP</span><span>{ERA_YEAR_RANGE}</span></div>
+      <div className="hero-edition hero-reveal"><span>THE SONGS WE KEEP</span><span>{yearRange}</span></div>
       <div className="hero-composition">
         <p className="hero-eyebrow hero-reveal"><span />{copy.eyebrow}</p>
         <h1 className="hero-title hero-reveal"><span>Taylor</span><span>Swift<span className="hero-star">✦</span></span></h1>
-        <div className="hero-caption hero-reveal"><span className="hero-number">{ERAS.length}</span><p>{copy.subtitle}</p></div>
+        <div className="hero-caption hero-reveal"><span className="hero-number">{albums.length}</span><p>{copy.subtitle}</p></div>
         <div className="hero-actions hero-reveal">
           <button onClick={onExploreClick} className="editorial-button">{copy.enterButton}<span>↓</span></button>
           <button type="button" className="hero-music-button" onClick={onPlayRotation}>
             <span className="hero-music-dot" aria-hidden="true" />
-            <span>{zh ? `${ERAS.length} 个时代，轮着唱` : `${ERAS.length} ERAS, ON REPEAT`}</span>
+            <span>{zh ? `${albums.length} 个时代，轮着唱` : `${albums.length} ERAS, ON REPEAT`}</span>
           </button>
           <a href="#archive">{zh ? '挑一张唱片' : 'PICK A RECORD'} <span>↗</span></a>
         </div>

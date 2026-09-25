@@ -1,7 +1,8 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { ERAS, type EraData } from '@/data/eras';
+import { useCatalog, type Album } from '@/data/catalog';
+import { resolveMediaUrl } from '@/data/media';
 import type { Language, SiteCopy } from '@/data/i18n';
 
 if (typeof window !== 'undefined') {
@@ -27,7 +28,7 @@ function getClosestEraIndex(container: HTMLElement, track: HTMLElement) {
 }
 
 function getEraTravelDistance(container: HTMLElement, track: HTMLElement) {
-  const lastCard = track.querySelectorAll<HTMLElement>('.era-panel').item(ERAS.length - 1);
+  const lastCard = track.querySelectorAll<HTMLElement>('.era-panel').item(track.querySelectorAll('.era-panel').length - 1);
   if (!lastCard) return 0;
 
   const currentX = Number(gsap.getProperty(track, 'x')) || 0;
@@ -45,17 +46,27 @@ interface ErasCorridorProps {
 }
 
 export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps) {
+  const { albums } = useCatalog();
+  const progressRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const bgHueRef = useRef<HTMLDivElement>(null);
   const [activeEraIndex, setActiveEraIndex] = useState(0);
   const activeEraIndexRef = useRef(0);
+  useEffect(() => {
+    const strip = progressRef.current;
+    const active = strip?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (strip && active) strip.scrollTo({ left: active.offsetLeft - strip.offsetLeft - strip.clientWidth / 2 + active.clientWidth / 2, behavior: 'smooth' });
+  }, [activeEraIndex]);
 
   const syncActiveEraIndex = useCallback((index: number) => {
     if (index === activeEraIndexRef.current) return;
     activeEraIndexRef.current = index;
     setActiveEraIndex(index);
   }, []);
+  useEffect(() => {
+    if (activeEraIndexRef.current >= albums.length) syncActiveEraIndex(Math.max(0, albums.length - 1));
+  }, [albums.length, syncActiveEraIndex]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -129,7 +140,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
     });
 
     return () => ctx.revert();
-  }, [syncActiveEraIndex]);
+  }, [syncActiveEraIndex, albums.length]);
 
   const selectEra = (index: number) => {
     const trigger = ScrollTrigger.getById('eras-corridor');
@@ -153,7 +164,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
     syncActiveEraIndex(index);
   };
 
-  const currentEra = ERAS[activeEraIndex] || ERAS[0];
+  const currentEra = albums[activeEraIndex] || albums[0];
 
   return (
     <section
@@ -203,7 +214,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
         }}
         className="relative z-10 flex items-center gap-6 md:gap-10 px-6 md:px-14 pb-14 md:pb-16 w-max will-change-transform"
       >
-        {ERAS.map((era: EraData, index: number) => {
+        {albums.map((era: Album, index: number) => {
           const isCurrent = index === activeEraIndex;
           return (
             <article
@@ -220,7 +231,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
               {/* Card Image with Parallax Mask */}
               <div className="absolute inset-0 overflow-hidden">
                 <img
-                  src={era.image}
+                  src={resolveMediaUrl(era.artwork.presentation)}
                   alt={era.name[language]}
                   className="era-panel-img w-full h-full object-cover filter brightness-[0.72] contrast-[1.05] group-hover:scale-105 group-hover:brightness-[0.88] transition-all duration-700 ease-out"
                 />
@@ -252,7 +263,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
               {/* Card Bottom Information */}
               <div className="relative z-10 p-6 md:p-8 flex flex-col">
                 <span className="font-sans text-[10px] tracking-[0.24em] uppercase text-white/60 mb-2">
-                  {era.stats.genre[language] && `${era.stats.genre[language]} · `}{era.stats.tracks} {copy.viewTracks}
+                  {era.genre[language] && `${era.genre[language]} · `}{era.tracks.length} {copy.viewTracks}
                 </span>
 
                 <h3 className="font-cinzel text-2xl sm:text-3xl md:text-4xl font-normal text-white tracking-[0.04em] leading-tight">
@@ -290,8 +301,8 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
 
       {/* Progress Dots Indicator */}
       <div className="relative z-20 px-6 md:px-14 pb-6 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 md:gap-2">
-          {ERAS.map((era, i) => (
+        <div ref={progressRef} className="era-progress-dots flex items-center gap-1.5 md:gap-2">
+          {albums.map((era, i) => (
             <button
               type="button"
               aria-label={era.name[language]}
@@ -305,7 +316,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
           ))}
         </div>
         <span className="text-[10px] tracking-[0.2em] font-sans text-white/40 uppercase">
-          {activeEraIndex + 1} / {ERAS.length}
+          {activeEraIndex + 1} / {albums.length}
         </span>
       </div>
     </section>

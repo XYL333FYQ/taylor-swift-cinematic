@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import gsap from 'gsap';
 import type { Language } from '@/data/i18n';
-import { ERAS } from '@/data/eras';
-import { MUSIC_LIBRARY, ROTATION_PLAYLIST, type MusicAlbum, type MusicTrack } from '@/data/music';
+import { useCatalog, type Album, type Track } from '@/data/catalog';
+import { resolveMediaUrl } from '@/data/media';
 import { parseLyrics, type LyricLine } from '@/utils/lyrics';
 import { useAudioFade } from '@/hooks/useAudioFade';
 import { useVinylMotion } from '@/hooks/useVinylMotion';
@@ -23,8 +23,8 @@ export interface MusicPlayerControllerProps {
 }
 
 interface Selection {
-  album: MusicAlbum | null;
-  track: MusicTrack | null;
+  album: Album | null;
+  track: Track | null;
 }
 
 interface PendingLoad {
@@ -36,13 +36,7 @@ interface PendingLoad {
 
 const lyricsCache = new Map<string, Promise<LyricLine[]>>();
 
-function resolveAudioUrl(file: string) {
-  if (/^(https?:|blob:|data:)/i.test(file)) return file;
-  const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
-  return `${base}${file.replace(/^\/+/, '')}`;
-}
-
-function randomTrack(tracks: MusicTrack[], currentId: string | null) {
+function randomTrack(tracks: Track[], currentId: string | null) {
   if (tracks.length < 2) return tracks[0] ?? null;
   const choices = tracks.filter((track) => track.id !== currentId);
   return choices[Math.floor(Math.random() * choices.length)] ?? tracks[0] ?? null;
@@ -56,6 +50,7 @@ export function useMusicPlayerController({
   onPlayingChange,
   onClose,
 }: MusicPlayerControllerProps) {
+  const { albums, rotationPlaylist } = useCatalog();
   const audioRef = useRef<HTMLAudioElement>(null);
   const transitionTokenRef = useRef(0);
   const visualExitRef = useRef<(() => void) | null>(null);
@@ -74,9 +69,9 @@ export function useMusicPlayerController({
   const shuffleHistoryRef = useRef<Array<{ albumId: string; trackId: string }>>([]);
   const handleMusicCommandRef = useRef<(command: MusicCommand) => void>(() => {});
 
-  const defaultAlbum = MUSIC_LIBRARY[0] ?? null;
+  const defaultAlbum = albums[0] ?? null;
   const [selectedAlbumId, setSelectedAlbumId] = useState(requestedAlbumId ?? defaultAlbum?.id ?? '');
-  const initialAlbum = MUSIC_LIBRARY.find((album) => album.id === (requestedAlbumId ?? defaultAlbum?.id)) ?? defaultAlbum;
+  const initialAlbum = albums.find((album) => album.id === (requestedAlbumId ?? defaultAlbum?.id)) ?? defaultAlbum;
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(initialAlbum?.tracks[0]?.id ?? null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -91,14 +86,27 @@ export function useMusicPlayerController({
   const [volume, setVolume] = useState(0.72);
 
   const selectedAlbum = useMemo(
-    () => MUSIC_LIBRARY.find((album) => album.id === selectedAlbumId) ?? MUSIC_LIBRARY[0] ?? null,
-    [selectedAlbumId],
+    () => albums.find((album) => album.id === selectedAlbumId) ?? albums[0] ?? null,
+    [albums, selectedAlbumId],
   );
   const currentTrack = useMemo(
     () => selectedAlbum?.tracks.find((track) => track.id === selectedTrackId) ?? null,
     [selectedAlbum, selectedTrackId],
   );
-  const currentEra = ERAS.find((era) => era.id === selectedAlbum?.id) ?? ERAS[0];
+  useEffect(() => {
+    const existing = albums.find((album) => album.id === selectedAlbumId);
+    if (existing && (selectedTrackId
+      ? existing.tracks.some((track) => track.id === selectedTrackId)
+      : existing.tracks.length === 0)) return;
+    const fallback = existing ?? albums[0];
+    if (!fallback) return;
+    audioRef.current?.pause();
+    setIsPlaying(false);
+    setSelectedAlbumId(fallback.id);
+    setSelectedTrackId(fallback.tracks[0]?.id ?? null);
+    selectionRef.current = { album: fallback, track: fallback.tracks[0] ?? null };
+  }, [albums, selectedAlbumId, selectedTrackId]);
+  const currentEra = selectedAlbum;
   const albumLabel = selectedAlbum?.name[language] ?? '';
   const [loadedLyrics, setLoadedLyrics] = useState<{ trackId: string; lines: LyricLine[] } | null>(null);
   const lyrics = loadedLyrics && loadedLyrics.trackId === currentTrack?.id ? loadedLyrics.lines : [];
@@ -106,7 +114,7 @@ export function useMusicPlayerController({
     const track = currentTrack;
     if (!track) return;
     if (!track.lyricsUrl) return;
-    const url = resolveAudioUrl(track.lyricsUrl);
+    const url = resolveMediaUrl(track.lyricsUrl);
     let request = lyricsCache.get(url);
     if (!request) {
       request = fetch(url).then((response) => {
@@ -159,8 +167,8 @@ export function useMusicPlayerController({
   }), []);
 
   const transitionToTrack = useCallback(async (
-    album: MusicAlbum,
-    track: MusicTrack,
+    album: Album,
+    track: Track,
     shouldPlay: boolean,
     direction: 'next' | 'previous' | null,
     recordHistory = true,
@@ -251,11 +259,11 @@ export function useMusicPlayerController({
   }, [fadeTo, markPlaybackError]);
 
   const startRotation = useCallback((index: number, shouldPlay = true) => {
-    const total = ROTATION_PLAYLIST.length;
+    const total = rotationPlaylist.length;
     if (!total) return;
     const normalizedIndex = (index + total) % total;
-    const entry = ROTATION_PLAYLIST[normalizedIndex];
-    const album = MUSIC_LIBRARY.find((item) => item.id === entry?.albumId);
+    const entry = rotationPlaylist[normalizedIndex];
+    const album = albums.find((item) => item.id === entry?.albumId);
     const track = album?.tracks.find((item) => item.id === entry?.trackId);
     if (!album || !track) return;
 
@@ -271,13 +279,13 @@ export function useMusicPlayerController({
       return;
     }
     void transitionToTrack(album, track, shouldPlay, null);
-  }, [playCurrentTrack, transitionToTrack]);
+  }, [albums, rotationPlaylist, playCurrentTrack, transitionToTrack]);
 
   const advanceRotation = useCallback((step: number, shouldPlay: boolean) => {
-    const total = ROTATION_PLAYLIST.length;
+    const total = rotationPlaylist.length;
     if (!total) return;
     startRotation(rotationIndexRef.current + step, shouldPlay);
-  }, [startRotation]);
+  }, [rotationPlaylist.length, startRotation]);
 
   const pauseCurrentTrack = useCallback(async () => {
     playbackIntentRef.current = false;
@@ -317,13 +325,20 @@ export function useMusicPlayerController({
     else startRotation(0, true);
   }, [clearRotation, startRotation]);
 
-  const selectAlbum = useCallback((album: MusicAlbum) => {
+  const selectAlbum = useCallback((album: Album) => {
     clearRotation();
     const firstTrack = album.tracks[0];
     if (firstTrack) void transitionToTrack(album, firstTrack, false, null);
+    else {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+      selectionRef.current = { album, track: null };
+      setSelectedAlbumId(album.id);
+      setSelectedTrackId(null);
+    }
   }, [clearRotation, transitionToTrack]);
 
-  const selectTrack = useCallback((track: MusicTrack, source: 'click' | 'scroll') => {
+  const selectTrack = useCallback((track: Track, source: 'click' | 'scroll') => {
     const album = selectionRef.current.album;
     if (!album) return;
     if (selectionRef.current.track?.id === track.id) {
@@ -337,7 +352,7 @@ export function useMusicPlayerController({
     void transitionToTrack(album, track, source === 'click' || playbackIntentRef.current, direction);
   }, [clearRotation, togglePlayback, transitionToTrack]);
 
-  const chooseRandom = useCallback((album: MusicAlbum, currentId: string | null) => randomTrack(album.tracks, currentId), []);
+  const chooseRandom = useCallback((album: Album, currentId: string | null) => randomTrack(album.tracks, currentId), []);
 
   const selectRelativeTrack = useCallback((step: 1 | -1, fromEnded = false) => {
     if (isRotationRef.current) {
@@ -350,7 +365,7 @@ export function useMusicPlayerController({
 
     if (step < 0 && shuffleRef.current && shuffleHistoryRef.current.length) {
       const previous = shuffleHistoryRef.current.pop();
-      const previousAlbum = MUSIC_LIBRARY.find((item) => item.id === previous?.albumId);
+      const previousAlbum = albums.find((item) => item.id === previous?.albumId);
       const previousTrack = previousAlbum?.tracks.find((item) => item.id === previous?.trackId);
       if (previousAlbum && previousTrack) {
         void transitionToTrack(previousAlbum, previousTrack, playbackIntentRef.current || fromEnded, 'previous', false);
@@ -358,7 +373,8 @@ export function useMusicPlayerController({
       }
     }
 
-    let target: MusicTrack | null = null;
+    let target: Track | null = null;
+    let wrappedToFirstTrack = false;
     if (shuffleRef.current && album.tracks.length > 1) {
       target = chooseRandom(album, track.id);
     } else {
@@ -366,6 +382,9 @@ export function useMusicPlayerController({
       let nextIndex = currentIndex + step;
       if (repeatModeRef.current === 'all') {
         nextIndex = (nextIndex + album.tracks.length) % album.tracks.length;
+      } else if (step > 0 && nextIndex >= album.tracks.length && album.tracks.length > 1) {
+        nextIndex = 0;
+        wrappedToFirstTrack = true;
       } else if (nextIndex < 0 || nextIndex >= album.tracks.length) {
         if (fromEnded) {
           playbackIntentRef.current = false;
@@ -380,9 +399,9 @@ export function useMusicPlayerController({
     if (!target) return;
     const currentIndex = album.tracks.findIndex((item) => item.id === track.id);
     const targetIndex = album.tracks.findIndex((item) => item.id === target?.id);
-    const direction = targetIndex >= currentIndex ? 'next' : 'previous';
+    const direction = wrappedToFirstTrack ? 'next' : targetIndex >= currentIndex ? 'next' : 'previous';
     void transitionToTrack(album, target, fromEnded || playbackIntentRef.current, direction);
-  }, [advanceRotation, chooseRandom, transitionToTrack]);
+  }, [advanceRotation, albums, chooseRandom, transitionToTrack]);
 
   const handlePrevious = useCallback(() => selectRelativeTrack(-1), [selectRelativeTrack]);
   const handleNext = useCallback(() => selectRelativeTrack(1), [selectRelativeTrack]);
@@ -393,14 +412,14 @@ export function useMusicPlayerController({
       void playCurrentTrack(true);
       return;
     }
-    if (isRotationRef.current && repeatModeRef.current === 'off' && rotationIndexRef.current >= ROTATION_PLAYLIST.length - 1) {
+    if (isRotationRef.current && repeatModeRef.current === 'off' && rotationIndexRef.current >= rotationPlaylist.length - 1) {
       playbackIntentRef.current = false;
       setIsPlaying(false);
       setIsChangingTrack(false);
       return;
     }
     selectRelativeTrack(1, true);
-  }, [playCurrentTrack, selectRelativeTrack]);
+  }, [playCurrentTrack, rotationPlaylist, selectRelativeTrack]);
 
   const cyclePlayMode = useCallback(() => {
     const nextShuffle = !shuffleRef.current && repeatModeRef.current === 'off';
@@ -469,12 +488,19 @@ export function useMusicPlayerController({
   }, [musicCommand]);
 
   useEffect(() => {
-    const album = MUSIC_LIBRARY.find((item) => item.id === requestedAlbumId);
+    const album = albums.find((item) => item.id === requestedAlbumId);
     if (!album || selectionRef.current.album?.id === album.id) return;
     clearRotation();
     const firstTrack = album.tracks[0];
     if (firstTrack) void transitionToTrack(album, firstTrack, false, null);
-  }, [clearRotation, requestedAlbumId, transitionToTrack]);
+    else {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+      selectionRef.current = { album, track: null };
+      setSelectedAlbumId(album.id);
+      setSelectedTrackId(null);
+    }
+  }, [albums, clearRotation, requestedAlbumId, transitionToTrack]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -524,7 +550,7 @@ export function useMusicPlayerController({
       ? pendingLoadRef.current
       : null;
     const token = request?.token ?? transitionTokenRef.current;
-    const source = resolveAudioUrl(track.file);
+    const source = resolveMediaUrl(track.file);
     let active = true;
 
     audio.pause();
@@ -604,7 +630,10 @@ export function useMusicPlayerController({
 
   const selectedIndex = selectedAlbum?.tracks.findIndex((track) => track.id === currentTrack?.id) ?? -1;
   const hasPrevious = isRotationRef.current || shuffle || repeatMode === 'all' || selectedIndex > 0;
-  const hasNext = isRotationRef.current || shuffle || repeatMode === 'all' || (selectedAlbum ? selectedIndex < selectedAlbum.tracks.length - 1 : false);
+  const canWrapSequentially = repeatMode === 'off' && selectedIndex === (selectedAlbum?.tracks.length ?? 0) - 1
+    && (selectedAlbum?.tracks.length ?? 0) > 1;
+  const hasNext = isRotationRef.current || shuffle || repeatMode === 'all' || canWrapSequentially
+    || (selectedAlbum ? selectedIndex < selectedAlbum.tracks.length - 1 : false);
 
   const dockSeek = (event: ChangeEvent<HTMLInputElement>) => handleSeek(Number(event.target.value));
 

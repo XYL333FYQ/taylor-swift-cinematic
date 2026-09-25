@@ -24,10 +24,10 @@ import {
   type Warn,
 } from './audio-library-core.ts';
 
-export const AUDIO_DIRECTORY = 'public/audio';
-const GENERATED_FILE = 'src/data/music.generated.ts';
+export const AUDIO_DIRECTORY = 'audio';
+export const CATALOG_FILE = 'catalog.json';
 export const PREVIEW_CATALOG = 'preview-catalog.json';
-const FALLBACK_ARTWORK = './img/taylor/stage.webp';
+const FALLBACK_ARTWORK = './theme/taylor/finale.webp';
 
 type LocalizedValue = string | { en?: string; zh?: string };
 
@@ -45,11 +45,17 @@ interface AlbumManifest {
   id?: string;
   name?: LocalizedValue;
   year?: string | number;
+  releaseDate?: string;
   artist?: string;
   genre?: LocalizedValue;
   description?: LocalizedValue;
   subtitle?: LocalizedValue;
+  tagline?: LocalizedValue;
+  quote?: LocalizedValue;
   artwork?: string;
+  watermark?: string;
+  archiveNote?: string;
+  sortOrder?: number;
   color?: string;
   colorAccent?: string;
   tracks?: TrackOverride[];
@@ -65,7 +71,7 @@ interface PreviewAlbumReference {
   tracks?: PreviewTrackReference[];
 }
 
-export interface GeneratedTrack {
+export interface CatalogTrack {
   id: string;
   title: string;
   file: string;
@@ -78,25 +84,27 @@ export interface GeneratedTrack {
   artwork?: string;
 }
 
-export interface GeneratedAlbum {
+export interface CatalogAlbum {
   id: string;
   folder: string;
   name: { en: string; zh: string };
-  year: string;
+  releaseDate: string;
   artist?: string;
   genre: { en: string; zh: string };
   description: { en: string; zh: string };
-  subtitle: { en: string; zh: string };
+  tagline: { en: string; zh: string };
+  quote: { en: string; zh: string };
   color: string;
   colorAccent: string;
-  image: string;
-  /** Lets curated era copy keep its existing image when only a track image was found. */
-  artworkLevel: 'album' | 'track' | 'fallback';
+  artwork: { cover: string; presentation: string };
+  watermark?: string;
+  archiveNote?: string;
+  tracks: CatalogTrack[];
 }
 
-interface ScannedAlbum extends GeneratedAlbum {
-  tracks: GeneratedTrack[];
+interface ScannedAlbum extends CatalogAlbum {
   owned: number;
+  sortOrder?: number;
 }
 
 interface ScannedAudio extends AudioResource {
@@ -458,7 +466,7 @@ function mergePreviewTracks(
   ];
 }
 
-function assignTrackIds(albumId: string, drafts: TrackDraft[]): GeneratedTrack[] {
+function assignTrackIds(albumId: string, drafts: TrackDraft[]): CatalogTrack[] {
   const bases = drafts.map((draft) => createStableTrackId(
     albumId,
     draft.identityTitle,
@@ -496,11 +504,12 @@ function albumArtwork(
   localImages: ScannedImage[],
   tracks: TrackDraft[],
   album: string,
-): { url: string; level: GeneratedAlbum['artworkLevel'] } {
+): { url: string; level: 'album' | 'track' | 'fallback' } {
   const explicit = findManifestResource(manifest.artwork, localImages, album, 'album artwork');
   if (explicit) return { url: explicit.publicUrl, level: 'album' };
 
-  const rootImages = localImages.filter((image) => !image.directory);
+  const rootImages = localImages.filter((image) => !image.directory
+    || (image.directory.toLowerCase() === 'artwork' && ['cover', 'front', 'folder', 'album'].includes(normalizeTitle(image.stem))));
   const commonRank = (name: string) => ['cover', 'front', 'folder', 'album'].indexOf(basenameWithoutExtension(name).toLowerCase());
   const preferred = rootImages.filter((image) => commonRank(image.fileName) >= 0)
     .sort((a, b) => commonRank(a.fileName) - commonRank(b.fileName)
@@ -582,7 +591,7 @@ function trackDrafts(
   legacyFull: ScannedResources,
   warn: Warn,
   metadataAlbum?: string,
-): { tracks: GeneratedTrack[]; artwork: { url: string; level: GeneratedAlbum['artworkLevel'] }; albumName: string; year?: string; artist?: string; genre?: string } {
+): { tracks: CatalogTrack[]; artwork: { url: string; level: 'album' | 'track' | 'fallback' }; albumName: string; year?: string; artist?: string; genre?: string } {
   const allAudio = [...local.audio, ...legacyFull.audio].sort(compareAudioOrder);
   const allLyrics = [...local.lyrics, ...legacyFull.lyrics].sort((a, b) => compareNaturalPath(a.relativePath, b.relativePath));
   const allImages = [...local.images, ...legacyFull.images].sort((a, b) => compareNaturalPath(a.relativePath, b.relativePath));
@@ -624,9 +633,11 @@ function trackDrafts(
   const lyricMatches = matchAlbumResources(activeAudio, allLyrics.filter((item) =>
     !explicitLyrics.has(normalizedPathKey(item.relativePath))), 'lyrics', warn);
   const albumCoverNames = new Set(['cover', 'front', 'folder', 'album']);
-  const rootImages = local.images.filter((image) => !image.directory);
+  const rootImages = local.images.filter((image) => !image.directory
+    || (image.directory.toLowerCase() === 'artwork' && ['cover', 'front', 'folder', 'album'].includes(normalizeTitle(image.stem))));
   const imageMatches = matchAlbumResources(activeAudio, allImages.filter((item) =>
     !explicitImages.has(normalizedPathKey(item.relativePath))
+    && !(item.directory.toLowerCase() === 'artwork' && ['cover', 'presentation'].includes(normalizeTitle(item.stem)))
     && !(local.images.includes(item) && !item.directory
       && (rootImages.length === 1 || albumCoverNames.has(normalizeTitle(item.stem))))), 'artwork', warn);
   for (const draft of mergedDrafts) {
@@ -646,7 +657,7 @@ function trackDrafts(
     albumName: cleanText(typeof manifest.name === 'string' ? manifest.name : manifest.name?.en)
       || metadataAlbum
       || folder.replace(/[-_]+/g, ' ').replace(/\b\p{L}/gu, (character) => character.toUpperCase()),
-    year: parseYear(manifest.year) || distinctMajority(allAudio.map((audio) => audio.year), folder, 'year'),
+    year: parseYear(manifest.releaseDate || manifest.year) || distinctMajority(allAudio.map((audio) => audio.year), folder, 'year'),
     artist: cleanText(manifest.artist) || distinctMajority(allAudio.map((audio) => audio.albumArtist), folder, 'album artist')
       || uniformValue(allAudio.map((audio) => audio.artist)),
     genre: typeof manifest.genre === 'string' ? cleanText(manifest.genre)
@@ -705,7 +716,7 @@ async function readAlbum(
       }
     }
   }
-  if (local.audio.length === 0 && legacyFull.audio.length === 0) return undefined;
+  if (local.audio.length === 0 && legacyFull.audio.length === 0 && Object.keys(manifest).length === 0) return undefined;
 
   await readTrackTags(local, reader, folder);
   await readTrackTags(legacyFull, reader, folder);
@@ -719,19 +730,24 @@ async function readAlbum(
   const built = trackDrafts(id, folder, audioRoot, manifest, catalogMatch, local, legacyFull, warn, metadataAlbum);
   const name = pair(manifest.name, built.albumName);
   const genre = pair(manifest.genre ?? built.genre, '');
+  const cover = local.images.find((image) => image.relativePath.toLowerCase() === 'artwork/cover.webp')?.publicUrl ?? built.artwork.url;
+  const presentation = local.images.find((image) => image.relativePath.toLowerCase() === 'artwork/presentation.webp')?.publicUrl ?? cover;
   return {
     id,
     folder,
     name,
-    year: built.year || '',
+    releaseDate: cleanText(manifest.releaseDate) || built.year || '',
     artist: built.artist,
     genre,
     description: pair(manifest.description, ''),
-    subtitle: pair(manifest.subtitle, ''),
+    tagline: pair(manifest.tagline ?? manifest.subtitle, ''),
+    quote: pair(manifest.quote, ''),
     color: cleanText(manifest.color) || '#d1ba95',
     colorAccent: cleanText(manifest.colorAccent) || cleanText(manifest.color) || '#d1ba95',
-    image: built.artwork.url,
-    artworkLevel: built.artwork.level,
+    artwork: { cover, presentation },
+    watermark: cleanText(manifest.watermark),
+    archiveNote: cleanText(manifest.archiveNote),
+    sortOrder: positiveNumber(manifest.sortOrder),
     tracks: built.tracks,
     owned: built.tracks.filter((track) => track.kind === 'full').length,
   };
@@ -783,7 +799,8 @@ export async function scanAudioLibrary(root: string, options: ScanOptions = {}):
     albums.push(album);
   }
 
-  return albums.sort((a, b) => (Number(a.year) || 9999) - (Number(b.year) || 9999)
+  return albums.sort((a, b) => (Number(a.releaseDate.slice(0, 4)) || 9999) - (Number(b.releaseDate.slice(0, 4)) || 9999)
+    || (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)
     || compareNaturalPath(a.folder, b.folder));
 }
 
@@ -799,56 +816,17 @@ async function writeIfChanged(file: string, content: string): Promise<void> {
 
 export async function generateAudioLibrary(root: string, options: ScanOptions = {}): Promise<{ total: number; owned: number; folders: number }> {
   const albums = await scanAudioLibrary(root, options);
-  const albumData: GeneratedAlbum[] = albums.map((album) => ({
-    id: album.id,
-    folder: album.folder,
-    name: album.name,
-    year: album.year,
-    artist: album.artist,
-    genre: album.genre,
-    description: album.description,
-    subtitle: album.subtitle,
-    color: album.color,
-    colorAccent: album.colorAccent,
-    image: album.image,
-    artworkLevel: album.artworkLevel,
-  }));
-  const trackData = Object.fromEntries(albums.map((album) => [album.id, album.tracks]));
-  const generated = `/** AUTO-GENERATED by plugins/audio-library.ts. DO NOT EDIT. */
-export interface GeneratedTrack {
-  id: string;
-  title: string;
-  file: string;
-  kind: 'full' | 'preview';
-  lyrics?: string;
-  lyricsUrl?: string;
-  artist?: string;
-  trackNumber?: number;
-  discNumber?: number;
-  artwork?: string;
-}
-export interface GeneratedAlbum {
-  id: string;
-  folder: string;
-  name: { en: string; zh: string };
-  year: string;
-  artist?: string;
-  genre: { en: string; zh: string };
-  description: { en: string; zh: string };
-  subtitle: { en: string; zh: string };
-  color: string;
-  colorAccent: string;
-  image: string;
-  artworkLevel: 'album' | 'track' | 'fallback';
-}
-export const GENERATED_ALBUMS: GeneratedAlbum[] = ${JSON.stringify(albumData, null, 2)};
-export const GENERATED_TRACKS: Record<string, GeneratedTrack[]> = ${JSON.stringify(trackData, null, 2)};
-`;
-  await writeIfChanged(path.join(root, GENERATED_FILE), generated);
+  await writeIfChanged(path.join(root, CATALOG_FILE), JSON.stringify({ albums: albums.map((album) => ({
+    id: album.id, folder: album.folder, name: album.name, releaseDate: album.releaseDate,
+    artist: album.artist, genre: album.genre, description: album.description,
+    tagline: album.tagline, quote: album.quote, color: album.color,
+    colorAccent: album.colorAccent, artwork: album.artwork,
+    watermark: album.watermark, archiveNote: album.archiveNote, tracks: album.tracks,
+  })) }, null, 2) + '\n');
 
   const checklist = ['# 专辑与曲目', '', '由音频扫描器自动生成。请勿手动编辑。', ''];
   for (const album of albums) {
-    checklist.push(`## ${album.name.en}`, '', `public/audio/${album.folder}/ · ${album.tracks.length} 首`, '');
+    checklist.push(`## ${album.name.en}`, '', `audio/${album.folder}/ · ${album.tracks.length} 首`, '');
     for (const [index, track] of album.tracks.entries()) {
       checklist.push(`${track.kind === 'full' ? '✅' : '☐'} ${String(index + 1).padStart(2, '0')}. ${track.title}`);
     }
