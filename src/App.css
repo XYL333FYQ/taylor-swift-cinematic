@@ -71,7 +71,7 @@ a { color: inherit; }
 .index-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 7vw; align-items: start; }
 .era-selector button { display: grid; grid-template-columns: 24px 1fr 38px 16px; gap: 16px; align-items: center; width: 100%; padding: 17px 0; border: 0; border-bottom: 1px solid #ffffff17; background: transparent; text-align: left; color: #aaa59c; cursor: pointer; transition: color .25s, padding .25s; }
 @media (min-width: 768px) {
-  .era-selector { position: relative; max-height: min(708px, 100svh); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(209,186,149,.65) rgba(255,255,255,.035); }
+  .era-selector { position: relative; max-height: var(--index-feature-height, 100svh); overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(209,186,149,.65) rgba(255,255,255,.035); }
   .era-selector::-webkit-scrollbar { width: 6px; }
   .era-selector::-webkit-scrollbar-track { background: rgba(255,255,255,.035); border-radius: 999px; }
   .era-selector::-webkit-scrollbar-thumb { border: 1px solid rgba(9,9,9,.9); border-radius: 999px; background: linear-gradient(180deg,rgba(238,222,195,.72),rgba(173,146,112,.55)); }
