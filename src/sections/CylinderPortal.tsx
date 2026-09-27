@@ -67,7 +67,7 @@ export function CylinderPortal({ copy, imageSrc = './theme/taylor/portal.webp' }
   return (
     <section
       ref={sectionRef}
-      className="relative z-30 flex h-screen w-full items-center justify-center overflow-hidden bg-black"
+      className="visual-portal relative z-30 flex h-screen w-full items-center justify-center overflow-hidden bg-black"
     >
       {/* Seamless full-bleed photograph frame matching the cylinder dive */}
       <div
@@ -92,7 +92,7 @@ export function CylinderPortal({ copy, imageSrc = './theme/taylor/portal.webp' }
       {/* Immediate, high-clarity typography block */}
       <div
         ref={copyBlockRef}
-        className="relative z-10 max-w-3xl px-6 text-center text-white flex flex-col items-center select-none"
+        className="visual-portal-copy relative z-10 max-w-3xl px-6 text-center text-white flex flex-col items-center select-none"
       >
         <span className="font-sans text-[11px] tracking-[0.38em] uppercase text-amber-300/90 mb-4 px-3 py-1 rounded-full border border-amber-300/30 bg-black/40 backdrop-blur-sm">
           {copy.badge}

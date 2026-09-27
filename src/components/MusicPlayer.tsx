@@ -1,19 +1,21 @@
-import type { CSSProperties } from 'react';
+import { useLayoutEffect, type CSSProperties } from 'react';
 import type { Language } from '@/data/i18n';
 import { useCatalog } from '@/data/catalog';
 import { resolveMediaUrl } from '@/data/media';
 import { EraCarousel } from '@/components/music/EraCarousel';
 import { PlayerStage } from '@/components/music/PlayerStage';
 import { MusicIcon } from '@/components/music/PlaybackControls';
-import { useMusicPlayerController, type MusicCommand } from '@/hooks/useMusicPlayerController';
+import { useMusicPlayerController, type AlbumRequest, type MusicCommand } from '@/hooks/useMusicPlayerController';
 import { formatTime } from '@/utils/formatTime';
 
 interface MusicPlayerProps {
   isOpen: boolean;
   language: Language;
-  requestedAlbumId: string | null;
+  albumRequest: AlbumRequest | null;
   musicCommand: MusicCommand | null;
+  onCommandHandlerChange: (handler: ((command: MusicCommand) => boolean) | null) => void;
   onPlayingChange: (playing: boolean) => void;
+  onPlaybackError?: (message: string) => void;
   onOpen: () => void;
   onClose: () => void;
 }
@@ -21,9 +23,11 @@ interface MusicPlayerProps {
 export function MusicPlayer({
   isOpen,
   language,
-  requestedAlbumId,
+  albumRequest,
   musicCommand,
+  onCommandHandlerChange,
   onPlayingChange,
+  onPlaybackError,
   onOpen,
   onClose,
 }: MusicPlayerProps) {
@@ -63,17 +67,24 @@ export function MusicPlayer({
     handleEnded,
     onAudioError,
     onAudioReady,
-    handleAudioPlay,
+    handleAudioPlaying,
     handleAudioPause,
     handleAudioTimeUpdate,
+    handleGestureCommand,
   } = useMusicPlayerController({
     isOpen,
     language,
-    requestedAlbumId,
+    albumRequest,
     musicCommand,
     onPlayingChange,
+    onPlaybackError,
     onClose,
   });
+
+  useLayoutEffect(() => {
+    onCommandHandlerChange(handleGestureCommand);
+    return () => onCommandHandlerChange(null);
+  }, [handleGestureCommand, onCommandHandlerChange]);
 
   return (
     <>
@@ -170,12 +181,12 @@ export function MusicPlayer({
         ref={audioRef}
         className="music-audio-element"
         preload="metadata"
-        onPlay={(event) => handleAudioPlay(event.currentTarget)}
+        onPlaying={(event) => handleAudioPlaying(event.currentTarget)}
         onPause={(event) => handleAudioPause(event.currentTarget)}
         onTimeUpdate={(event) => handleAudioTimeUpdate(event.currentTarget)}
         onLoadedMetadata={onAudioReady}
         onCanPlay={onAudioReady}
-        onEnded={handleEnded}
+        onEnded={(event) => handleEnded(event.currentTarget)}
         onError={onAudioError}
       />
     </>

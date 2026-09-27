@@ -155,7 +155,9 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
    * React 对父节点子元素的记录会因此失效；此时再插入/替换兄弟节点会抛
    * NotFoundError（insertBefore）。渲染期定好形状就没有这个风险。
    */
-  const [hasFailed, setHasFailed] = useState(() => !isWebGLAvailable());
+  const [hasFailed] = useState(() => !isWebGLAvailable());
+  const [runtimeFallback, setRuntimeFallback] = useState(false);
+  const [journeyVisible, setJourneyVisible] = useState(false);
 
   const rendererRef = useRef<Renderer | null>(null);
   const cameraRef = useRef<Camera | null>(null);
@@ -186,16 +188,26 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
     let animationFrame = 0;
     let animationContext: gsap.Context | undefined;
     let sceneVisible = false;
-    const visibilityObserver = new IntersectionObserver(([entry]) => { sceneVisible = entry.isIntersecting; });
+    let contextUnavailable = false;
+    const visibilityObserver = new IntersectionObserver(([entry]) => {
+      sceneVisible = entry.isIntersecting;
+      setJourneyVisible(entry.isIntersecting);
+    });
     visibilityObserver.observe(container);
 
     const fallbackToStatic = () => {
       if (isDestroyed || hasImageFailed) return;
       hasImageFailed = true;
-      visibilityObserver.disconnect();
-      setHasFailed(true);
+      contextUnavailable = true;
+      cancelAnimationFrame(animationFrame);
+      setRuntimeFallback(true);
       notifyLoaded();
     };
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      fallbackToStatic();
+    };
+    canvas.addEventListener('webglcontextlost', onContextLost);
 
     let renderer: Renderer;
     try {
@@ -210,7 +222,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
     } catch (error) {
       console.warn('WebGL context creation failed — falling back to the static layout.', error);
       fallbackToStatic();
-      return () => { isDestroyed = true; visibilityObserver.disconnect(); };
+      return () => { isDestroyed = true; visibilityObserver.disconnect(); canvas.removeEventListener('webglcontextlost', onContextLost); };
     }
 
     const gl = renderer.gl;
@@ -261,7 +273,12 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
 
     // High performance texture baking
     const textureCanvas = document.createElement('canvas');
-    const ctx = textureCanvas.getContext('2d', { alpha: false })!;
+    const ctx = textureCanvas.getContext('2d', { alpha: false });
+    if (!ctx) {
+      console.warn('Cylinder texture canvas is unavailable; showing static artwork.');
+      fallbackToStatic();
+      return () => { isDestroyed = true; visibilityObserver.disconnect(); canvas.removeEventListener('webglcontextlost', onContextLost); };
+    }
     const singleWidth = 1024;
     const singleHeight = 1024;
     const hardwareLimit = gl.getParameter(gl.MAX_TEXTURE_SIZE);
@@ -316,7 +333,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       let retriedWithFreshCacheKey = false;
       img.crossOrigin = 'anonymous';
       img.onload = () => {
-        if (isDestroyed || hasImageFailed) return;
+        if (isDestroyed || contextUnavailable || hasImageFailed) return;
         imageObjects[idx] = img;
         loadedCount += 1;
 
@@ -521,7 +538,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
 
           // Continuous Render Loop
           const renderLoop = () => {
-            if (isDestroyed) return;
+            if (isDestroyed || contextUnavailable) return;
             animationFrame = requestAnimationFrame(renderLoop);
             if (!sceneVisible || document.hidden) return;
 
@@ -568,7 +585,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
         }
       };
       img.onerror = () => {
-        if (isDestroyed || hasImageFailed) return;
+        if (isDestroyed || contextUnavailable || hasImageFailed) return;
         if (!retriedWithFreshCacheKey) {
           const retrySrc = withCylinderCorsCacheKey(src, window.location.href, CYLINDER_CORS_RETRY_REVISION);
           if (retrySrc) {
@@ -587,6 +604,7 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
 
     return () => {
       isDestroyed = true;
+      canvas.removeEventListener('webglcontextlost', onContextLost);
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrame);
       visibilityObserver.disconnect();
@@ -605,18 +623,28 @@ export function CylinderExperience({ copy, onLoaded }: CylinderExperienceProps) 
       {/* Fixed WebGL Canvas Container */}
       <div
         ref={canvasShellRef}
-        aria-hidden="true"
+        aria-hidden={!runtimeFallback || !journeyVisible}
         className="fixed inset-0 z-10 pointer-events-none transition-opacity duration-300"
+        style={runtimeFallback && !journeyVisible ? { visibility: 'hidden' } : undefined}
       >
         {/* 舞台光晕：让圆柱周围的留白是「被打亮的黑」，而不是空黑 */}
         <div className="cylinder-ambient" />
         <canvas ref={canvasRef} className="relative block w-full h-full" />
+        {runtimeFallback && <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-[#070707]">
+          <img src={resolveMediaUrl('./theme/taylor/portal.webp')} alt="" className="absolute inset-0 h-full w-full object-cover opacity-35" />
+          <div className="relative max-w-xl px-6 text-center text-white">
+            <span className="font-sans text-[11px] tracking-[0.32em] uppercase text-amber-300/80">{copy.perspectives[0]?.tag}</span>
+            <h2 className="mt-4 font-cinzel text-3xl md:text-5xl">{copy.perspectives[0]?.title}</h2>
+            <p className="mt-4 font-serif text-base text-white/70">{copy.perspectives[0]?.subtitle}</p>
+          </div>
+        </div>}
       </div>
 
       {/* Floating Perspective Typography Overlay */}
       <div
         ref={textShellRef}
         className="fixed inset-0 z-20 pointer-events-none flex items-center justify-center p-6"
+        style={runtimeFallback ? { visibility: 'hidden' } : undefined}
       >
         {copy.perspectives.map((item, index) => (
           <div

@@ -22,6 +22,7 @@ export function TrackCylinder({ tracks, currentTrackId, isPlaying, language, onS
   const selectedIndexRef = useRef(0);
   const tracksRef = useRef(tracks);
   const suppressClickRef = useRef(false);
+  const suppressClickTimerRef = useRef<number | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [rowStep, setRowStep] = useState(44);
   const selectedIndex = Math.max(0, tracks.findIndex((track) => track.id === currentTrackId));
@@ -85,6 +86,7 @@ export function TrackCylinder({ tracks, currentTrackId, isPlaying, language, onS
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || tracks.length < 2) return;
+    suppressClickRef.current = false; // A new physical press is not a synthetic post-drag click.
     dragRef.current = { startY: event.clientY, startIndex: focusIndex, dragged: false };
   };
 
@@ -106,7 +108,9 @@ export function TrackCylinder({ tracks, currentTrackId, isPlaying, language, onS
     const index = wrapIndex(targetIndexRef.current);
     setPreviewIndex(null);
     suppressClickRef.current = true;
-    requestAnimationFrame(() => { suppressClickRef.current = false; });
+    if (suppressClickTimerRef.current !== null) window.clearTimeout(suppressClickTimerRef.current);
+    // Safari can dispatch a compatibility click after the next animation frame.
+    suppressClickTimerRef.current = window.setTimeout(() => { suppressClickRef.current = false; suppressClickTimerRef.current = null; }, 550);
     onSelectTrack(tracks[index], 'scroll');
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
@@ -121,6 +125,7 @@ export function TrackCylinder({ tracks, currentTrackId, isPlaying, language, onS
 
   useEffect(() => () => {
     if (wheelReleaseTimerRef.current !== null) window.clearTimeout(wheelReleaseTimerRef.current);
+    if (suppressClickTimerRef.current !== null) window.clearTimeout(suppressClickTimerRef.current);
   }, []);
 
   const maxOffset = Math.min(5, Math.floor(tracks.length / 2));
@@ -166,8 +171,8 @@ export function TrackCylinder({ tracks, currentTrackId, isPlaying, language, onS
             data-current={index === selectedIndex ? 'true' : undefined}
             className={`music-track-wheel-row ${isCurrent ? 'is-focused' : ''}`}
             style={rowStyle}
-            onClick={() => {
-              if (suppressClickRef.current) return;
+            onClick={(event) => {
+              if (suppressClickRef.current && event.detail > 0) { suppressClickRef.current = false; return; }
               onSelectTrack(track, 'click');
             }}
           >

@@ -42,7 +42,7 @@ export function EraCarousel({
     const stripRect = strip.getBoundingClientRect();
     const selectedRect = selected.getBoundingClientRect();
     const delta = selectedRect.left + selectedRect.width / 2 - (stripRect.left + stripRect.width / 2);
-    strip.scrollTo({ left: strip.scrollLeft + delta, behavior: smooth ? 'smooth' : 'instant' });
+    strip.scrollTo({ left: strip.scrollLeft + delta, behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
   useLayoutEffect(() => {
@@ -136,11 +136,23 @@ export function EraCarousel({
   useEffect(() => {
     const strip = stripRef.current;
     if (!strip) return;
+    let fallbackTimer: number | null = null;
     const rebaseAfterScroll = () => {
       if (selectedCopyRef.current !== 1) rebaseCopyToCenter(selectedCopyRef.current, targetIndexRef.current);
     };
+    // Some WebKit builds expose scrollend without dispatching it consistently.
+    // Keep both the native event and a debounced-scroll fallback; rebase is idempotent.
     strip.addEventListener('scrollend', rebaseAfterScroll);
-    return () => strip.removeEventListener('scrollend', rebaseAfterScroll);
+    const onScroll = () => {
+      if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
+      fallbackTimer = window.setTimeout(rebaseAfterScroll, 180);
+    };
+    strip.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      strip.removeEventListener('scrollend', rebaseAfterScroll);
+      strip.removeEventListener('scroll', onScroll);
+      if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
+    };
   }, [rebaseCopyToCenter]);
 
   useEffect(() => () => {

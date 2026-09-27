@@ -342,6 +342,8 @@ a { color: inherit; }
 .music-dock-progress input { width: 100%; accent-color: var(--champagne); }
 .music-dock-progress span:last-child { text-align: right; }
 .music-audio-element { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.music-playback-notice { position: fixed; z-index: 85; right: 18px; bottom: 18px; display: flex; align-items: center; gap: 16px; max-width: min(460px, calc(100vw - 36px)); padding: 13px 15px; border: 1px solid #d1ba9566; border-radius: 9px; background: #181611f2; box-shadow: 0 8px 30px #000b; color: #e8dac7; font: 12px/1.5 var(--font-sans); }
+.music-playback-notice button { flex: 0 0 auto; padding: 2px 6px; border: 0; background: none; color: inherit; font: 22px/1 var(--font-sans); cursor: pointer; }
 .hero-music-button { display: inline-flex; align-items: center; gap: 10px; padding: 0; border: 0; background: transparent; color: var(--paper); font: 9px var(--font-sans); letter-spacing: .1em; cursor: pointer; }
 .hero-music-button span:last-child { padding-bottom: 8px; border-bottom: 1px solid #d1ba9544; transition: border-color .25s; }
 .hero-music-button:hover span:last-child { border-color: var(--champagne); }
@@ -423,6 +425,12 @@ a { color: inherit; }
   .music-era-carousel-kicker { font-size: 7px; }
   .music-era-item { flex-basis: 65px; }
 }
+@media (max-width: 480px) and (max-height: 600px) {
+  .music-drawer { --music-carousel-height: 130px; }
+  .music-cover-composition { width: min(100%, 210px); }
+  .music-cover-artwork, .vinyl-record { width: min(67%, 150px); }
+  .music-playback-controls { margin-top: 8px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .music-drawer, .music-era-intro, .music-track-wheel-row, .music-era-item, .music-era-artwork, .music-era-artwork img, .music-center-track-info, .music-cover-composition { animation: none; transition: none; }
   .music-eq i, .music-play-toggle::after { animation: none; }
@@ -453,4 +461,54 @@ a { color: inherit; }
   .cylinder-fallback-block { grid-template-columns: 1fr; gap: 10px; margin-bottom: 64px; }
   .cylinder-fallback-index { font-size: 24px; }
   .cylinder-fallback-gallery { grid-auto-columns: 66vw; }
+}
+
+@media (min-width: 901px) {
+  .music-left-panel .music-track-cylinder {
+    top: max(var(--music-side-top), var(--music-intro-safe-top, 0px));
+    height: min(var(--music-side-height), calc(100% - max(var(--music-side-top), var(--music-intro-safe-top, 0px)) - 10px));
+  }
+}
+
+@media (min-width: 2000px) and (max-height: 1000px) and (min-aspect-ratio: 21/10) {
+  .music-era-carousel { --music-safe-era-width: min(clamp(78px, 8vw, 168px), calc((var(--music-carousel-height) - 64px) * .8)); }
+  .music-era-item { flex-basis: var(--music-safe-era-width); }
+  .music-era-strip { padding-inline: max(8px, calc((100% - var(--music-safe-era-width)) / 2)); }
+}
+
+@media (min-width: 768px) and (max-height: 720px) {
+  .editorial-hero { padding-top: clamp(50px, 9svh, 120px); padding-bottom: clamp(20px, 4svh, 42px); }
+  .hero-composition { padding-top: clamp(12px, 4svh, 60px); padding-bottom: clamp(12px, 4svh, 55px); }
+  .hero-title { font-size: clamp(80px, min(12vw, 19svh), 185px); }
+}
+
+@media (min-width: 768px) {
+  .era-corridor[data-fit-compact="true"] .era-card-top { padding: 16px 20px; }
+  .era-corridor[data-fit-compact="true"] .era-card-bottom { padding: 14px 20px; }
+  .era-corridor[data-fit-compact="true"] .era-card-bottom h3 { font-size: clamp(20px, 2.15vw, 30px); line-height: 1.08; }
+  .era-corridor[data-fit-compact="true"] .era-card-bottom .era-play-button { margin-top: 9px; }
+  .era-corridor[data-fit-compact="true"] .era-card-bottom p { margin-top: 5px; }
+  .era-corridor[data-fit-compact="true"] .era-card-bottom .era-card-quote { margin-top: 7px; padding-top: 7px; }
+  .index-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .index-layout > * { min-width: 0; }
+  .era-selector button > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .index-details h3 { overflow-wrap: anywhere; }
+}
+
+@media (max-width: 767px) {
+  .visual-portal, .visual-spotlight { height: 100svh; }
+}
+
+@media (max-width: 767px) and (max-height: 720px) {
+  .hero-composition { padding-top: clamp(36px, 11svh, 110px); }
+}
+
+@media (max-width: 767px) and (max-height: 700px) {
+  .visual-portal-copy h2 { font-size: clamp(25px, 7vw, 36px); }
+  .visual-portal-copy p { margin-top: 12px; }
+  .visual-portal-copy > div:last-child { margin-top: 18px; }
+  .visual-spotlight-copy h2 { font-size: clamp(27px, 7.8vw, 39px); }
+  .visual-spotlight-copy p { margin-top: 12px; }
+  .visual-spotlight-quote blockquote { font-size: clamp(23px, 6vw, 32px); }
+  .visual-spotlight-quote .mt-10 { margin-top: 18px; }
 }

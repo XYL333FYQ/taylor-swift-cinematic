@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useCatalog, type Album } from '@/data/catalog';
@@ -50,6 +50,54 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
   const progressRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLDivElement>(null);
+  const progressAreaRef = useRef<HTMLDivElement>(null);
+  // Measure sibling blocks instead of guessing a height from vw or a fixed OS.
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const heading = headingRef.current;
+    const footer = progressAreaRef.current;
+    const track = trackRef.current;
+    if (!container || !heading || !footer || !track) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      if (window.innerWidth < 768) {
+        container.style.removeProperty('--era-card-safe-height');
+        container.removeAttribute('data-fit-compact');
+        return;
+      }
+      const sectionHeight = container.getBoundingClientRect().height;
+      const bottomSpace = parseFloat(getComputedStyle(track).paddingBottom) || 0;
+      const room = Math.floor(sectionHeight - heading.getBoundingClientRect().height
+        - footer.getBoundingClientRect().height - bottomSpace - 24);
+      // Do not change original card sizing on a spacious screen.
+      container.style.setProperty('--era-card-safe-height', `${Math.max(200, room)}px`);
+      const regular = Math.min(window.innerHeight * 0.58, window.innerWidth * 0.40);
+      container.dataset.fitCompact = room < regular - 2 && room < 335 ? 'true' : 'false';
+    };
+    const schedule = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(container);
+    observer.observe(heading);
+    observer.observe(footer);
+    window.addEventListener('resize', schedule, { passive: true });
+    schedule();
+    void document.fonts.ready.then(() => {
+      if (containerRef.current === container) schedule();
+    });
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('resize', schedule);
+      container.style.removeProperty('--era-card-safe-height');
+      container.removeAttribute('data-fit-compact');
+    };
+  }, [language, copy.title, copy.subtitle, albums.length]);
+
   const bgHueRef = useRef<HTMLDivElement>(null);
   const [activeEraIndex, setActiveEraIndex] = useState(0);
   const activeEraIndexRef = useRef(0);
@@ -152,15 +200,17 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
     const container = containerRef.current;
     const track = trackRef.current;
     if (!container || !track) return;
+    // The catalog is dynamic. A click can race an update that removed a card.
+    const cards = track.querySelectorAll<HTMLElement>('.era-panel');
+    const card = cards.item(index);
+    if (!card || !albums[index]) return;
     if (!trigger) {
-      const card = track.querySelectorAll<HTMLElement>('.era-panel')[index];
       track.scrollTo({ left: card.offsetLeft - 24, behavior: 'smooth' });
       syncActiveEraIndex(index);
       return;
     }
-    const cards = track.querySelectorAll<HTMLElement>('.era-panel');
     const currentX = Number(gsap.getProperty(track, 'x')) || 0;
-    const cardRect = cards[index].getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
     const cardCenter = cardRect.left + cardRect.width / 2 - currentX;
     const containerCenter = container.getBoundingClientRect().left + container.clientWidth / 2;
     const distance = getEraTravelDistance(container, track);
@@ -195,7 +245,8 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
       </div>
 
       {/* Corridor Header */}
-      <div className="relative z-20 px-6 md:px-14 pt-20 md:pt-24 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div ref={headingRef}
+        className="era-corridor-heading relative z-20 px-6 md:px-14 pt-20 md:pt-24 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <span className="font-sans text-[10px] md:text-[11px] tracking-[0.32em] uppercase text-amber-300/80 mb-2 block">
             {copy.badge}{currentEra.year && ` · ${currentEra.year}`}
@@ -229,7 +280,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
               }`}
               style={{
                 width: 'min(40vw, 64svh)',
-                height: 'min(58svh, 40vw)',
+                height: 'min(58svh, 40vw, var(--era-card-safe-height, 100svh))',
                 backgroundColor: '#0c0c0d',
               }}
             >
@@ -249,7 +300,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
               </div>
 
               {/* Card Top Information */}
-              <div className="relative z-10 p-6 md:p-8 flex items-center justify-between">
+              <div className="era-card-top relative z-10 p-6 md:p-8 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <span
                     className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]"
@@ -266,7 +317,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
               </div>
 
               {/* Card Bottom Information */}
-              <div className="relative z-10 p-6 md:p-8 flex flex-col">
+              <div className="era-card-bottom relative z-10 p-6 md:p-8 flex flex-col">
                 <span className="font-sans text-[10px] tracking-[0.24em] uppercase text-white/60 mb-2">
                   {era.genre[language] && `${era.genre[language]} · `}{era.tracks.length} {copy.viewTracks}
                 </span>
@@ -280,7 +331,7 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
                 </p>}
 
                 {/* Signature quote quote-mark */}
-                {era.quote[language] && <div className="mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-[11px] font-serif italic text-white/50">
+                {era.quote[language] && <div className="era-card-quote mt-4 pt-3 border-t border-white/15 flex items-center justify-between text-[11px] font-serif italic text-white/50">
                   <span className="truncate max-w-[85%]">{era.quote[language]}</span>
                   <span className="text-white/30 text-xs">↗</span>
                 </div>}
@@ -305,7 +356,8 @@ export function ErasCorridor({ copy, language, onPlayAlbum }: ErasCorridorProps)
       </div>
 
       {/* Progress Dots Indicator */}
-      <div className="relative z-20 px-6 md:px-14 pb-6 flex items-center justify-between">
+      <div ref={progressAreaRef}
+        className="era-corridor-progress relative z-20 px-6 md:px-14 pb-6 flex items-center justify-between">
         <div ref={progressRef} className="era-progress-dots flex items-center gap-1.5 md:gap-2">
           {albums.map((era, i) => (
             <button
