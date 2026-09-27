@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type RefObject } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { useCatalog } from '@/data/catalog';
 import { resolveMediaUrl } from '@/data/media';
 import type { Language } from '@/data/i18n';
@@ -67,6 +67,52 @@ export function PlayerStage({
   const text = era.description[language];
   const [mobileView, setMobileView] = useState<'player' | 'tracks' | 'lyrics'>('player');
   const coverUrl = resolveMediaUrl(album.artwork.cover);
+  const leftPanelRef = useRef<HTMLElement>(null);
+  const introRef = useRef<HTMLDivElement>(null);
+
+  // The two scroll areas are independent. Only move the left wheel when the
+  // real intro box (including font fallback and language wrapping) collides.
+  useLayoutEffect(() => {
+    const panel = leftPanelRef.current;
+    const intro = introRef.current;
+    if (!panel || !intro) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      if (!window.matchMedia('(min-width: 901px)').matches) {
+        panel.style.removeProperty('--music-intro-safe-top');
+        return;
+      }
+      const wheel = panel.querySelector<HTMLElement>('.music-track-cylinder');
+      // Measure the ORIGINAL unmodified wheel. Otherwise a previous protective
+      // offset could get stuck after a resize back to a spacious viewport.
+      panel.style.removeProperty('--music-intro-safe-top');
+      if (!wheel) return;
+      const introBottom = intro.offsetTop + intro.offsetHeight;
+      if (introBottom > wheel.offsetTop) {
+        panel.style.setProperty('--music-intro-safe-top', `${Math.ceil(introBottom + 6)}px`);
+      }
+    };
+    const schedule = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(panel);
+    observer.observe(intro);
+    window.addEventListener('resize', schedule, { passive: true });
+    schedule();
+    void document.fonts.ready.then(() => {
+      if (leftPanelRef.current === panel) schedule();
+    });
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('resize', schedule);
+      panel.style.removeProperty('--music-intro-safe-top');
+    };
+  }, [era.id, language]);
+
 
   return (
     <main className="music-main-grid" data-mobile-view={mobileView} style={{ '--music-era-glow': era.colorAccent } as CSSProperties}>
@@ -80,8 +126,8 @@ export function PlayerStage({
           <button type="button" key={view} className={mobileView === view ? 'is-active' : ''} aria-pressed={mobileView === view} onClick={() => setMobileView(view)}>{label}</button>
         ))}
       </nav>
-      <section className={`music-side-panel music-left-panel ${isChangingTrack ? 'is-changing' : ''}`} aria-label={zh ? '时代与曲目' : 'Era and tracks'}>
-        <div className="music-side-intro music-era-intro" key={era.id}>
+      <section ref={leftPanelRef} className={`music-side-panel music-left-panel ${isChangingTrack ? 'is-changing' : ''}`} aria-label={zh ? '时代与曲目' : 'Era and tracks'}>
+        <div ref={introRef} className="music-side-intro music-era-intro" key={era.id}>
           <p className="section-kicker">{zh ? '时代档案' : 'ERA ARCHIVE'} · {era.number} / {albums.length}</p>
           <div className="music-era-title-lockup"><span>{era.number}</span>{era.year && <><i aria-hidden="true">/</i><small>{era.year}</small></>}</div>
           <h2>{era.name[language]}</h2>

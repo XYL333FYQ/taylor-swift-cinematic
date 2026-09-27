@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { copyData, type Language } from '@/data/i18n';
 import { Navigation } from '@/components/Navigation';
 import { MusicPlayer } from '@/components/MusicPlayer';
-import type { MusicCommand } from '@/hooks/useMusicPlayerController';
+import type { AlbumRequest, MusicCommand } from '@/hooks/useMusicPlayerController';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { FilmGrain } from '@/components/FilmGrain';
 import { Loader } from '@/components/loader';
@@ -18,10 +19,14 @@ import { FinaleOutro } from '@/sections/FinaleOutro';
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isMusicOpen, setIsMusicOpen] = useState(false);
-  const [requestedAlbumId, setRequestedAlbumId] = useState<string | null>(null);
+  // A navigation request is an event, not the player's permanent selected album.
+  const [albumRequest, setAlbumRequest] = useState<AlbumRequest | null>(null);
+  const albumRequestIdRef = useRef(0);
   const [musicCommand, setMusicCommand] = useState<MusicCommand | null>(null);
   const musicCommandIdRef = useRef(0);
+  const musicCommandHandlerRef = useRef<((command: MusicCommand) => boolean) | null>(null);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
+  const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
   const [language, setLanguage] = useState<Language>(() => {
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem('ts-language');
@@ -31,6 +36,19 @@ export default function App() {
   });
 
   const copy = copyData[language];
+
+  useEffect(() => {
+    let disposed = false;
+    let frame = 0;
+    void document.fonts.ready.then(() => {
+      if (!disposed) frame = requestAnimationFrame(() => ScrollTrigger.refresh());
+    });
+    return () => {
+      disposed = true;
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
+
   const handleLoaded = useCallback(() => setIsLoading(false), []);
 
   useEffect(() => {
@@ -44,13 +62,22 @@ export default function App() {
   };
 
   const handleOpenMusic = useCallback((albumId?: string) => {
-    if (albumId) setRequestedAlbumId(albumId);
+    // Navigation passes a click event if its handler is wired directly.
+    // Only a real album ID may update the selection request.
+    if (typeof albumId === 'string' && albumId) setAlbumRequest({ id: ++albumRequestIdRef.current, albumId });
     setIsMusicOpen(true);
   }, []);
 
   const issueMusicCommand = useCallback((action: MusicCommand['action']) => {
     musicCommandIdRef.current += 1;
-    setMusicCommand({ id: musicCommandIdRef.current, action });
+    const command = { id: musicCommandIdRef.current, action };
+    // Safari may reject audible media started later in a React effect. Keep
+    // deliberate play commands in the originating click's activation stack.
+    if (!musicCommandHandlerRef.current?.(command)) setMusicCommand(command);
+  }, []);
+
+  const registerMusicCommandHandler = useCallback((handler: ((command: MusicCommand) => boolean) | null) => {
+    musicCommandHandlerRef.current = handler;
   }, []);
 
   /** 主界面入口：从头开始轮换播放已发现的专辑。 */
@@ -61,7 +88,10 @@ export default function App() {
 
   const handleMusicPlayingChange = useCallback((playing: boolean) => {
     setIsMusicPlaying(playing);
+    if (playing) setPlaybackNotice(null);
   }, []);
+
+  const handlePlaybackError = useCallback((message: string) => setPlaybackNotice(message), []);
 
   const handleRestart = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -127,12 +157,20 @@ export default function App() {
       <MusicPlayer
         isOpen={isMusicOpen}
         language={language}
-        requestedAlbumId={requestedAlbumId}
+        albumRequest={albumRequest}
         musicCommand={musicCommand}
+        onCommandHandlerChange={registerMusicCommandHandler}
         onPlayingChange={handleMusicPlayingChange}
+        onPlaybackError={handlePlaybackError}
         onOpen={() => setIsMusicOpen(true)}
         onClose={() => setIsMusicOpen(false)}
       />
+      {playbackNotice && !isMusicOpen && (
+        <div className="music-playback-notice" role="alert">
+          <span>{playbackNotice}</span>
+          <button type="button" aria-label={language === 'zh' ? '关闭提示' : 'Dismiss'} onClick={() => setPlaybackNotice(null)}>×</button>
+        </div>
+      )}
     </>
   );
 }

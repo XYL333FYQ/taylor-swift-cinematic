@@ -58,7 +58,7 @@ export function Navigation({
       </div>
 
       <nav className="chapter-nav" aria-label={language === 'zh' ? '章节导航' : 'Chapters'}>
-        <button type="button" onClick={onOpenMusic}>{language === 'zh' ? '音乐' : 'The songs'}</button>
+        <button type="button" onClick={() => onOpenMusic()}>{language === 'zh' ? '音乐' : 'The songs'}</button>
         <a href="#archive">{language === 'zh' ? '唱片架' : 'The records'}</a>
       </nav>
       {/* Right controls: Sound + Language */}
@@ -66,7 +66,7 @@ export function Navigation({
         <button
           type="button"
           className="mobile-music-trigger md:hidden"
-          onClick={onOpenMusic}
+          onClick={() => onOpenMusic()}
           aria-label={language === 'zh' ? '打开音乐播放器' : 'Open music player'}
         >
           ♫

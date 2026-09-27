@@ -70,7 +70,7 @@ export function SpotlightEra({ copy }: SpotlightEraProps) {
   return (
     <section
       ref={sectionRef}
-      className="relative z-30 flex h-screen w-full items-center justify-center overflow-hidden bg-black select-none text-white"
+      className="visual-spotlight relative z-30 flex h-screen w-full items-center justify-center overflow-hidden bg-black select-none text-white"
     >
       {/* Cinematic Spotlight Backdrop */}
       <div
@@ -94,7 +94,7 @@ export function SpotlightEra({ copy }: SpotlightEraProps) {
       {/* Primary Narrative & Title Block */}
       <div
         ref={titleBlockRef}
-        className="relative z-10 max-w-4xl px-6 md:px-12 flex flex-col items-start"
+        className="visual-spotlight-copy relative z-10 max-w-4xl px-6 md:px-12 flex flex-col items-start"
       >
         <span className="font-sans text-[11px] tracking-[0.34em] uppercase text-white/50 mb-3 px-3.5 py-1 rounded-full border border-white/20 bg-white/5 backdrop-blur-sm">
           {copy.badge}
@@ -116,7 +116,7 @@ export function SpotlightEra({ copy }: SpotlightEraProps) {
       {/* Secondary Climax Quote & Sonic Blueprint Block */}
       <div
         ref={quoteBlockRef}
-        className="absolute z-20 max-w-3xl px-6 md:px-12 text-center flex flex-col items-center opacity-0 pointer-events-none"
+        className="visual-spotlight-quote absolute z-20 max-w-3xl px-6 md:px-12 text-center flex flex-col items-center opacity-0 pointer-events-none"
       >
         <blockquote className="font-serif text-2xl sm:text-3xl md:text-5xl italic font-normal text-white/95 leading-tight tracking-[0.02em] drop-shadow-[0_4px_30px_rgba(0,0,0,0.9)]">
           {copy.quote}

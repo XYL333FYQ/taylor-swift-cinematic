@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type WheelEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Language } from '@/data/i18n';
 import { findActiveLyric, type LyricLine } from '@/utils/lyrics';
 import { wheelStep } from '@/utils/wheelStep';
@@ -58,6 +58,7 @@ export function LyricsPanel({ lines, currentTime, language, onSeek }: LyricsPane
   const dragRef = useRef({ startY: 0, startIndex: 0, dragged: false });
   const wheelAccumulatorRef = useRef(0);
   const suppressClickRef = useRef(false);
+  const suppressClickTimerRef = useRef<number | null>(null);
   const idleTimerRef = useRef<number | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [showCredits, setShowCredits] = useState(false);
@@ -91,7 +92,10 @@ export function LyricsPanel({ lines, currentTime, language, onSeek }: LyricsPane
     }, 3000);
   }, [clearIdleTimer]);
 
-  useEffect(() => clearIdleTimer, [clearIdleTimer]);
+  useEffect(() => () => {
+    clearIdleTimer();
+    if (suppressClickTimerRef.current !== null) window.clearTimeout(suppressClickTimerRef.current);
+  }, [clearIdleTimer]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -113,11 +117,11 @@ export function LyricsPanel({ lines, currentTime, language, onSeek }: LyricsPane
     return () => observer.disconnect();
   }, [hasTimestamps, lyricLines.length]);
 
-  const moveFocus = (nextIndex: number) => {
+  const moveFocus = useCallback((nextIndex: number) => {
     if (!lyricLines.length) return;
     setPreviewIndex(clampIndex(nextIndex, lyricLines.length));
     scheduleReturnToCurrent();
-  };
+  }, [lyricLines.length, scheduleReturnToCurrent]);
 
   const seekToIndex = (index: number) => {
     const line = lyricLines[index];
@@ -127,15 +131,25 @@ export function LyricsPanel({ lines, currentTime, language, onSeek }: LyricsPane
     }
   };
 
-  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+  const handleWheel = useCallback((event: WheelEvent) => {
     if (!hasTimestamps || lyricLines.length < 2 || !event.deltaY) return;
     event.preventDefault();
-    const direction = wheelStep(event.nativeEvent, wheelAccumulatorRef, event.deltaY);
+    const direction = wheelStep(event, wheelAccumulatorRef, event.deltaY);
     if (direction) moveFocus(focusIndex + direction);
-  };
+  }, [focusIndex, hasTimestamps, lyricLines.length, moveFocus]);
+
+  useEffect(() => {
+    const windowElement = viewportRef.current?.querySelector<HTMLElement>('[data-lyrics-window="timed"]');
+    if (!windowElement) return;
+    // React's delegated wheel handler can be passive. A native listener lets
+    // Safari prevent background/section scroll while inspecting lyrics.
+    windowElement.addEventListener('wheel', handleWheel, { passive: false });
+    return () => windowElement.removeEventListener('wheel', handleWheel);
+  }, [handleWheel, hasTimestamps]);
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !hasTimestamps || lyricLines.length < 2) return;
+    suppressClickRef.current = false;
     dragRef.current = { startY: event.clientY, startIndex: focusIndex, dragged: false };
   };
 
@@ -153,7 +167,8 @@ export function LyricsPanel({ lines, currentTime, language, onSeek }: LyricsPane
     const drag = dragRef.current;
     if (!drag.dragged) return;
     suppressClickRef.current = true;
-    requestAnimationFrame(() => { suppressClickRef.current = false; });
+    if (suppressClickTimerRef.current !== null) window.clearTimeout(suppressClickTimerRef.current);
+    suppressClickTimerRef.current = window.setTimeout(() => { suppressClickRef.current = false; suppressClickTimerRef.current = null; }, 550);
     scheduleReturnToCurrent();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
@@ -210,7 +225,6 @@ export function LyricsPanel({ lines, currentTime, language, onSeek }: LyricsPane
           tabIndex={0}
           aria-label={isChinese ? '按播放进度同步的歌词' : 'Lyrics synced to playback'}
           aria-activedescendant={'music-lyric-option-' + focusIndex}
-          onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -239,8 +253,8 @@ export function LyricsPanel({ lines, currentTime, language, onSeek }: LyricsPane
                   data-lyric-row="true"
                   className={'music-lyric-row' + (index === focusIndex ? ' is-active' : '')}
                   style={rowStyle}
-                  onClick={() => {
-                    if (suppressClickRef.current) return;
+                  onClick={(event) => {
+                    if (suppressClickRef.current && event.detail > 0) { suppressClickRef.current = false; return; }
                     seekToIndex(index);
                   }}
                 >
