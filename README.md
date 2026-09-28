@@ -19,6 +19,7 @@
 - **同步歌词：** 支持外部 LRC 和可读取的同步内嵌歌词，可随播放进度高亮和跳转。
 - **中英文界面与响应式布局：** 页面文案支持中英文，布局适配桌面和窄屏设备。
 - **分离的媒体发布：** Cloudflare Pages 发布网站；Cloudflare R2 保存音频、歌词、专辑图片和 Catalog。媒体更新通常不需要重建网站。
+- **两种媒体维护模式：** `music:sync` 同步完整本地曲库；`music:upload` 从 `incoming/` 增量添加专辑或歌曲，并保留云端已有内容。
 
 这与普通播放列表的差别在于：专辑是可探索的空间和叙事入口，播放器则与这份动态档案共享曲目数据。
 
@@ -40,6 +41,10 @@
 | 媒体存储 | Cloudflare Pages + Cloudflare R2 | Pages 托管网站，R2 公开读取媒体与 Catalog |
 
 Pages + R2 将网站代码发布和大型媒体文件发布分开：Git 仓库与 Pages 构建不需要包含整套音乐；更新音频或专辑图片时，由同步器增量更新 R2 和 Catalog。动态 Catalog 是组件共享的数据入口，因此添加专辑通常不需要编辑每个 React 组件。
+
+日常只保存待上传专辑时，使用 `incoming/` 和 `pnpm music:upload`。它以 R2 上的 `catalog.json` 为准，只追加新资产，不会因为本地缺少旧专辑而删除云端内容。完整本地曲库的迁移、备份、重建仍使用 `audio/` 和 `pnpm music:sync`。
+
+本仓库现在只保留空的 `audio/`、`incoming/`、`uploaded/` 目录框架；演示曲库仍在 R2，未随 Git 分发。本地 `pnpm dev` 只扫描 `audio/`，所以空目录时会显示空曲库提示；线上网站继续读取 R2 Catalog。
 
 ~~~text
 audio/ → 扫描器 → Catalog / 增量同步 → R2 公共域名
@@ -79,15 +84,14 @@ pnpm dev
 
 打开 Vite 在终端打印的本地地址，通常是 http://localhost:5173。克隆仓库不会下载或包含项目演示曲库；没有 audio/ 媒体时，开发服务器仍可启动，并显示中英文空曲库提示。要试听自己的合法媒体，继续阅读[添加专辑](docs/ADD_ALBUMS.md)。
 
-## 从克隆到播放自己的曲目
+## 添加自己的音乐
 
-1. 在 audio/<专辑目录>/ 放入自己有权使用的音频，可选添加 album.json、封面、展示图和 .lrc。
-2. 运行 pnpm dev。开发服务器会扫描本地专辑并提供音频 Range 请求；页面数据会随扫描更新。
-3. 若要发布到自己的网站，按 [R2 配置教程](docs/CLOUDFLARE_R2.md)建立 Bucket 和公开域名，将写入凭证只保存在本机 .env.local。
-4. 配置生产环境公开的 VITE_CATALOG_URL，再运行 pnpm music:sync。同步器先增量上传并验证媒体，最后发布 Catalog；任何删除都受安全门槛和交互确认约束。
-5. 网站代码或 public/theme/ 变更需要 Pages 构建；仅更新 R2 专辑媒体通常只需同步，不需要重新部署网站。
+1. 按 [R2 配置教程](docs/CLOUDFLARE_R2.md)建立自己的 Bucket 和公开域名；写入凭证只放在本机 `.env.local`，生产环境配置公开的 `VITE_CATALOG_URL`。
+2. 日常只保留待上传专辑时，把现有格式的专辑目录放入 `incoming/`，依次运行 `pnpm music:check`、`pnpm music:upload --dry-run` 和 `pnpm music:upload`。上传成功后专辑原样移到 `uploaded/`；核对云端媒体可读后，可以自行删除这份本地副本。
+3. 若要在本地 `pnpm dev` 预览音乐，或拥有完整本地曲库需要迁移、备份、重建，可把完整专辑目录放入 `audio/`。开发服务器会扫描这里；只有确认它包含预期的**完整曲库**时才运行 `pnpm music:sync`。
+4. 网站代码或 `public/theme/` 变更需要 Pages 构建；仅更新 R2 专辑媒体不需要重新部署网站。
 
-完整步骤见[添加专辑](docs/ADD_ALBUMS.md)、[R2 配置](docs/CLOUDFLARE_R2.md)和[同步器说明](docs/MUSIC_SYNC.md)。
+完整步骤见[添加专辑](docs/ADD_ALBUMS.md)、[上传助手](docs/MUSIC_UPLOAD.md)、[R2 配置](docs/CLOUDFLARE_R2.md)和[同步器说明](docs/MUSIC_SYNC.md)。
 
 ## 文档
 
@@ -98,6 +102,8 @@ pnpm dev
 - [音频与歌词](docs/LYRICS_AND_AUDIO.md)
 - [Cloudflare R2 配置](docs/CLOUDFLARE_R2.md)
 - [增量同步、监听与清理](docs/MUSIC_SYNC.md)
+- [日常专辑上传助手](docs/MUSIC_UPLOAD.md)
+- [更新记录](CHANGELOG.md)
 - [Cloudflare Pages 部署](docs/DEPLOYMENT.md)
 - [故障排查](docs/TROUBLESHOOTING.md)
 - [第三方素材与权利清单](docs/THIRD_PARTY_ASSETS.md)

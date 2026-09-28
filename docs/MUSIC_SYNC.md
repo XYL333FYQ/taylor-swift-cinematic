@@ -10,6 +10,12 @@ pnpm.cmd music:watch
 pnpm.cmd music:prune
 ~~~
 
+`music:sync` 用于 `audio/` 保存**完整本地曲库**的迁移、备份与重建。它仍会比较云端并处理新增、修改、删除。若本地只保留待上传专辑，请改用 [`music:upload`](MUSIC_UPLOAD.md)；该命令读取云端 Catalog，只添加新内容。
+
+同步开始前会读取 R2 `catalog.json`：如果本地缺少云端某张专辑，或歌曲总数至少少 2 首且不超过云端的 80%，会停止并提示 `pnpm music:sync --force`。只有确认 `audio/` 确实是预期的完整曲库时才使用 `--force`；它仅跳过这道数量检查，原有删除门槛及确认流程仍然生效。`music:watch` 也受此检查保护。
+
+云端优先模式下 `audio/` 为空是正常状态。此时不要运行 `music:sync` 或用 `--force` 处理新增音乐；请使用 `incoming/` 和 `music:upload`。完整同步脚本保留给确实拥有完整本地曲库的用户。
+
 | 命令 | 行为 |
 | --- | --- |
 | music:sync | 扫描当前曲库，增量上传，发布 Catalog，并按规则清理失去引用的已管理对象 |

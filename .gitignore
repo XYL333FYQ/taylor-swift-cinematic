@@ -15,7 +15,12 @@ __pycache__/
 *.py[cod]
 
 # Local master content and sync state never enter Git.
-/audio/
+/audio/*
+!/audio/.gitkeep
+/incoming/*
+!/incoming/.gitkeep
+/uploaded/*
+!/uploaded/.gitkeep
 /public/audio/
 /.music-cache/
 /catalog.json

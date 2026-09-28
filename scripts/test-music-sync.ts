@@ -15,6 +15,20 @@ import {
 import { createSerializedSyncQueue, waitForStableAudioTree } from './music-watch.ts';
 import { scanAudioLibrary } from '../plugins/audio-library.ts';
 import { withTargetSyncLock } from './music-sync-lock.ts';
+import { assertFullLibrarySafety, type PublishedCatalog } from './music-remote-catalog.ts';
+
+test('full-library cloud safety gate stops sync before any R2 media request', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'music-sync-safety-'));
+  try {
+    await addAlbum(root, 'only-local', 'only-local');
+    const remote = fakeR2();
+    const cloudCatalog = { albums: [{ id: 'cloud-only', tracks: [{ id: 'old-track' }] }] } as PublishedCatalog;
+    await assert.rejects(syncMusic(root, 'sync-safety-target', remote.uploader, {
+      verifyRemoteCatalog: async (albums) => assertFullLibrarySafety(albums, cloudCatalog),
+    }), /--force/);
+    assert.deepEqual(remote.events, []);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
 
 interface Event { type: 'put' | 'head' | 'delete'; key: string }
 interface FakeR2Options {

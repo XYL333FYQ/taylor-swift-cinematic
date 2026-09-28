@@ -14,11 +14,14 @@
     "typecheck": "tsc -b --pretty false",
     "generate:audio": "node --experimental-strip-types -e \"import('./plugins/audio-library.ts').then(m => m.generateAudioLibrary(process.cwd()))\"",
     "music:sync": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/music-sync.ts",
+    "music:upload": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/music-upload.ts",
+    "music:check": "node --experimental-strip-types scripts/music-check.ts",
     "music:watch": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/music-watch.ts",
     "music:prune": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/music-prune.ts",
     "test:audio": "node --experimental-strip-types --test scripts/test-audio-library.ts",
     "test:cylinder": "node --experimental-strip-types --test scripts/test-cylinder-album-selection.ts",
-    "test:music-sync": "node --experimental-strip-types --test scripts/test-music-sync.ts"
+    "test:music-sync": "node --experimental-strip-types --test scripts/test-music-sync.ts",
+    "test:music-upload": "node --experimental-strip-types --test scripts/test-music-upload.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",

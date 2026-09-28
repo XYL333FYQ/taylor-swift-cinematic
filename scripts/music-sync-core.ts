@@ -11,6 +11,8 @@ export interface ObjectUpload {
   contentLength: number;
   contentType: string;
   cacheControl: string;
+  ifMatch?: string;
+  ifNoneMatch?: string;
 }
 export interface RemoteObjectInfo { contentLength?: number }
 export interface Uploader {
@@ -35,14 +37,15 @@ interface SyncState {
   pendingDeletes?: string[];
   catalogHash?: string;
 }
-interface MediaFile { key: string; source?: string; text?: string; mime: string }
+export interface MediaFile { key: string; source?: string; text?: string; mime: string }
 export interface MusicSyncOptions {
   confirmPrune?: (plan: MusicPrunePlan) => Promise<boolean>;
   onLockWait?: () => void;
   verifyReadableFile?: ScanOptions['verifyReadableFile'];
+  verifyRemoteCatalog?: (albums: CatalogAlbum[]) => Promise<void>;
 }
-const MEDIA_CACHE = 'public, max-age=31536000, immutable';
-const CATALOG_CACHE = 'public, max-age=60, must-revalidate';
+export const MEDIA_CACHE = 'public, max-age=31536000, immutable';
+export const CATALOG_CACHE = 'public, max-age=60, must-revalidate';
 const MIME: Record<string, string> = {
   '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.m4a': 'audio/mp4',
   '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.opus': 'audio/ogg',
@@ -61,22 +64,22 @@ function safeId(value: string, label: string): string {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) throw new Error(`Invalid ${label}: ${value}`);
   return value;
 }
-async function sourceFile(root: string, url: string): Promise<string> {
-  if (!url.startsWith('audio/')) throw new Error(`Expected local audio path: ${url}`);
+async function sourceFile(root: string, url: string, directory: 'audio' | 'incoming'): Promise<string> {
+  if (!url.startsWith(`${directory}/`)) throw new Error(`Expected local ${directory} path: ${url}`);
   const segments = url.split('/').map(decodeURIComponent);
   if (segments.some((segment) => !segment || segment === '.' || segment === '..' || /[\\/]/.test(segment))) throw new Error(`Unsafe local media path: ${url}`);
-  const audioRoot = await fs.realpath(path.join(root, 'audio'));
+  const audioRoot = await fs.realpath(path.join(root, directory));
   const candidate = await fs.realpath(path.join(root, ...segments));
-  if (!candidate.startsWith(audioRoot + path.sep)) throw new Error(`Media outside audio/: ${url}`);
+  if (!candidate.startsWith(audioRoot + path.sep)) throw new Error(`Media outside ${directory}/: ${url}`);
   if (!(await fs.stat(candidate)).isFile()) throw new Error(`Media is not a file: ${url}`);
   return candidate;
 }
 
-async function buildCatalog(root: string, albums: CatalogAlbum[]): Promise<{ catalog: string; files: MediaFile[] }> {
+export async function buildCatalog(root: string, albums: CatalogAlbum[], directory: 'audio' | 'incoming' = 'audio'): Promise<{ catalog: string; files: MediaFile[] }> {
   const files = new Map<string, MediaFile>();
   const add = async (url: string, key: string): Promise<string> => {
     if (url.replace(/^\.\//, '').startsWith('theme/')) return url;
-    const source = await sourceFile(root, url);
+    const source = await sourceFile(root, url, directory);
     const extension = path.extname(source).toLowerCase();
     const mime = MIME[extension];
     if (!mime) throw new Error(`Unsupported media type: ${source}`);
@@ -348,6 +351,7 @@ async function syncMusicUnlocked(
   warnings: string[];
 }> {
   const { albums, warnings } = await scanAudio(root, options.verifyReadableFile);
+  await options.verifyRemoteCatalog?.(albums);
   const { catalog, files } = await buildCatalog(root, albums);
   const state = await readState(root, target);
   const currentKeys = new Set(files.map((file) => file.key));

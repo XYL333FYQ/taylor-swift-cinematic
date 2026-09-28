@@ -2,26 +2,9 @@ import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
-import { DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { syncMusic, type MusicPrunePlan, type ObjectUpload } from './music-sync-core.ts';
-
-const required = (name: string): string => {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`Missing ${name}. See .env.example and docs/cloudflare-r2-setup.md.`);
-  return value;
-};
-
-const missingObject = (error: unknown): boolean => {
-  if (!error || typeof error !== 'object') return false;
-  const response = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-  return response.$metadata?.httpStatusCode === 404 || response.name === 'NotFound' || response.name === 'NoSuchKey';
-};
-
-const safeRequestError = (operation: string, key: string, error: unknown): Error => {
-  const response = error as { $metadata?: { httpStatusCode?: number } };
-  const status = response?.$metadata?.httpStatusCode;
-  return new Error(`R2 ${operation} failed${status ? ` (HTTP ${status})` : ''} for ${key}.`);
-};
+import { syncMusic, type MusicPrunePlan } from './music-sync-core.ts';
+import { createMusicR2Store } from './music-r2-store.ts';
+import { assertFullLibrarySafety, parseRemoteCatalog } from './music-remote-catalog.ts';
 
 async function confirmPrune(plan: MusicPrunePlan): Promise<boolean> {
   console.log(`[music:sync] ${plan.objects.length} remote media object(s), ${(plan.totalBytes / 1_000_000_000).toFixed(3)} GB need manual cleanup confirmation.`);
@@ -41,51 +24,25 @@ async function confirmPrune(plan: MusicPrunePlan): Promise<boolean> {
   return answer.trim() === expected;
 }
 
-export async function runMusicSync(): Promise<void> {
-  const endpoint = process.env.R2_ENDPOINT?.trim()
-    || `https://${required('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`;
-  const bucket = required('R2_BUCKET_NAME');
-  const client = new S3Client({
-    endpoint,
-    region: 'auto',
-    credentials: {
-      accessKeyId: required('R2_ACCESS_KEY_ID'),
-      secretAccessKey: required('R2_SECRET_ACCESS_KEY'),
-    },
-    requestChecksumCalculation: 'WHEN_REQUIRED',
-  });
+export async function runMusicSync(force = false): Promise<void> {
+  const { target, store } = createMusicR2Store();
 
   try {
-    const result = await syncMusic(process.cwd(), `${endpoint}|${bucket}`, {
-      async put(object: ObjectUpload) {
-        try {
-          await client.send(new PutObjectCommand({
-            Bucket: bucket,
-            Key: object.key,
-            Body: object.body,
-            ContentLength: object.contentLength,
-            ContentType: object.contentType,
-            CacheControl: object.cacheControl,
-          }));
-        } catch (error) { throw safeRequestError('PutObject', object.key, error); }
+    if (force) console.log('[music:sync] --force: full-library cloud-count safety check is bypassed for this run.');
+    const result = await syncMusic(process.cwd(), target, {
+      async put(object) {
+        await store.put(object);
         if (object.key !== 'catalog.json') console.log(`[music:sync] uploaded ${object.key}`);
       },
-      async head(key: string) {
-        try {
-          const response = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-          return { contentLength: response.ContentLength };
-        } catch (error) {
-          if (missingObject(error)) return null;
-          throw safeRequestError('HeadObject', key, error);
-        }
-      },
-      async delete(key: string) {
-        try { await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); }
-        catch (error) { throw safeRequestError('DeleteObject', key, error); }
-      },
+      head: store.head,
+      delete: store.delete,
     }, {
       confirmPrune,
       onLockWait: () => console.log('[music:sync] another process is syncing this R2 target; waiting for its lock.'),
+      verifyRemoteCatalog: force ? undefined : async (albums) => {
+        const remote = await store.getText('catalog.json');
+        if (remote) assertFullLibrarySafety(albums, parseRemoteCatalog(remote.text));
+      },
     });
 
     console.log(`[music:sync] ${result.albums} albums; plan ${result.added} new, ${result.modified} changed, ${result.skipped} unchanged, ${result.cleanupCandidates} stale object(s); ${result.uploaded} media uploaded; catalog ${result.catalogUploaded ? 'published' : 'unchanged'}; ${result.deleted} stale media deleted.`);
@@ -93,13 +50,19 @@ export async function runMusicSync(): Promise<void> {
     for (const warning of result.warnings) console.log(`[music:sync] ${warning}`);
     if (result.warnings.length > 0) console.log(`[music:sync] ${result.warnings.length} non-critical scan warning(s) were retained.`);
   } finally {
-    client.destroy();
+    store.close();
   }
 }
 
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 if (isMainModule) {
-  try { await runMusicSync(); }
+  try {
+    const args = process.argv.slice(2).filter((arg) => arg !== '--');
+    if (args.some((arg) => arg !== '--force') || args.length > 1) {
+      throw new Error('Usage: pnpm music:sync [--force]');
+    }
+    await runMusicSync(args.includes('--force'));
+  }
   catch (error) {
     console.error(`[music:sync] ${error instanceof Error ? error.message : 'Synchronization failed.'}`);
     process.exitCode = 1;

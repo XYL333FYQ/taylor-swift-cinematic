@@ -19,6 +19,7 @@ An immersive 3D music archive organized around album eras. Visitors can explore 
 - **Synchronized lyrics:** External LRC files and readable synchronized embedded lyrics can highlight and seek with playback.
 - **Chinese and English UI with responsive layouts:** Interface copy supports both languages and adapts to desktop and narrow screens.
 - **Separate media publishing:** Cloudflare Pages serves the website; Cloudflare R2 stores audio, lyrics, album images, and the catalog. Media updates normally do not require rebuilding the site.
+- **Two music workflows:** `music:sync` mirrors a complete local library; `music:upload` adds new albums or tracks from `incoming/` while preserving the cloud catalog.
 
 Unlike a conventional playlist, albums are both visual spaces and narrative entry points. The player and the archive share the same dynamic track data.
 
@@ -40,6 +41,10 @@ Live demo: [https://meimei.eren.cc.cd](https://meimei.eren.cc.cd)
 | Media hosting | Cloudflare Pages + Cloudflare R2 | Pages hosts the site; R2 publicly serves media and catalog |
 
 Pages and R2 keep website releases separate from large media files. The Git repository and Pages build do not need a full music library. The sync tool incrementally updates R2 and the catalog when audio or album artwork changes. Components share a dynamic catalog, so adding an album normally does not require editing each React component.
+
+For day-to-day additions with no complete local library, use `incoming/` and `pnpm music:upload`. It reads the current R2 `catalog.json`, appends only new assets, and never deletes cloud media because it is absent locally. Keep `audio/` and `pnpm music:sync` for full-library migration, backup, or rebuilds.
+
+The repository now keeps only empty `audio/`, `incoming/`, and `uploaded/` directory placeholders. Demo music remains in R2 and is not distributed through Git. Local `pnpm dev` scans only `audio/`, so an empty local library shows the empty-library message while the production site continues to read the R2 catalog.
 
 ~~~text
 audio/ → scanner → catalog / incremental sync → public R2 domain
@@ -81,15 +86,14 @@ pnpm dev
 
 Open the local URL printed by Vite, usually http://localhost:5173. Cloning the repository does not download or include the demo music library. Without media in audio/, the development server still starts and shows a bilingual empty-library message. Continue with [Add an album](docs/ADD_ALBUMS.md) to preview audio you are allowed to use.
 
-## From clone to playing your own tracks
+## Add your own music
 
-1. Put audio you are allowed to use under audio/<album-folder>/. You may add album.json, cover art, a presentation image, and .lrc files.
-2. Run pnpm dev. The development server scans local albums and serves audio with Range support; the page updates as the catalog changes.
-3. To publish to your own site, follow the [R2 setup guide](docs/CLOUDFLARE_R2.md), create a bucket and public domain, and keep write credentials in a local .env.local file only.
-4. Configure the public production VITE_CATALOG_URL, then run pnpm music:sync. The sync tool incrementally uploads and verifies media before publishing the catalog. Deletion is constrained by safety rules and interactive confirmation.
-5. Website code and public/theme/ changes require a Pages build. Updating only album media in R2 normally requires sync but no site redeployment.
+1. Follow the [R2 setup guide](docs/CLOUDFLARE_R2.md) to create your own bucket and public domain. Keep write credentials in local `.env.local` and set the public production `VITE_CATALOG_URL`.
+2. For daily additions, put an album in `incoming/` using the existing album format. Run `pnpm music:check`, `pnpm music:upload --dry-run`, then `pnpm music:upload`. The original folder moves to `uploaded/`; after verifying the cloud media, you may remove that local copy.
+3. For local playback in `pnpm dev`, or for a complete local library used for migration, backup, or rebuilds, put the full albums in `audio/`. Run `pnpm music:sync` only when `audio/` truly contains the intended **complete library**.
+4. Website code and `public/theme/` changes require a Pages build. Updating only album media in R2 does not require a site redeployment.
 
-See [Add an album](docs/ADD_ALBUMS.md), [R2 setup](docs/CLOUDFLARE_R2.md), and [Music sync](docs/MUSIC_SYNC.md) for the full workflow.
+See [Add an album](docs/ADD_ALBUMS.md), [Music upload](docs/MUSIC_UPLOAD.md), [R2 setup](docs/CLOUDFLARE_R2.md), and [Music sync](docs/MUSIC_SYNC.md) for the full workflow.
 
 ## Documentation
 
@@ -99,6 +103,8 @@ See [Add an album](docs/ADD_ALBUMS.md), [R2 setup](docs/CLOUDFLARE_R2.md), and [
 - [Covers, presentation art, and theme images](docs/MEDIA_AND_ARTWORK.md)
 - [Audio and lyrics](docs/LYRICS_AND_AUDIO.md)
 - [Cloudflare R2 setup](docs/CLOUDFLARE_R2.md)
+- [Daily album upload](docs/MUSIC_UPLOAD.md)
+- [Change log](CHANGELOG.md)
 - [Incremental sync, watch, and cleanup](docs/MUSIC_SYNC.md)
 - [Cloudflare Pages deployment](docs/DEPLOYMENT.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)

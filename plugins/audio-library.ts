@@ -147,6 +147,8 @@ export interface ScanOptions {
   /** Allows sync preflight and tests to check that catalog media can be opened. */
   verifyReadableFile?: (absolutePath: string) => Promise<void>;
   onIssue?: (issue: string) => void;
+  /** The upload assistant scans incoming/ with the same album rules. */
+  audioDirectory?: 'audio' | 'incoming';
 }
 
 type ScanIssueLevel = 'warning' | 'critical';
@@ -722,7 +724,7 @@ function isLocalizedManifestValue(value: unknown): boolean {
     && ['en', 'zh'].every((key) => value[key] === undefined || typeof value[key] === 'string');
 }
 
-function isValidAlbumManifest(value: unknown): value is AlbumManifest {
+export function isValidAlbumManifest(value: unknown): value is AlbumManifest {
   if (!isRecord(value)) return false;
   const stringFields = ['id', 'releaseDate', 'artist', 'artwork', 'watermark', 'archiveNote', 'color', 'colorAccent'];
   if (stringFields.some((key) => value[key] !== undefined && typeof value[key] !== 'string')) return false;
@@ -741,6 +743,7 @@ function isValidAlbumManifest(value: unknown): value is AlbumManifest {
 
 async function readAlbum(
   audioRoot: string,
+  audioDirectory: 'audio' | 'incoming',
   folder: string,
   legacyFullRootName: string | undefined,
   catalogMatch: { id: string; entry: PreviewAlbumReference } | undefined,
@@ -761,7 +764,7 @@ async function readAlbum(
   ))) {
     warning(folder, 'album.json tracks entries must be objects with a non-empty audio path.', 'critical');
   }
-  const local = await scanResourceTree(albumDirectory, `audio/${folder}`, '', folder, verifyReadable, !hasLocalFolder);
+  const local = await scanResourceTree(albumDirectory, `${audioDirectory}/${folder}`, '', folder, verifyReadable, !hasLocalFolder);
   let legacyFull: ScannedResources = { audio: [], lyrics: [], images: [] };
   if (legacyFullRootName) {
     const fullRoot = path.join(audioRoot, legacyFullRootName);
@@ -771,7 +774,7 @@ async function readAlbum(
       if (matchingFolder) {
         legacyFull = await scanResourceTree(
           path.join(fullRoot, matchingFolder),
-          `audio/${legacyFullRootName}/${matchingFolder}`,
+          `${audioDirectory}/${legacyFullRootName}/${matchingFolder}`,
           `${legacyFullRootName}/${matchingFolder}`,
           folder,
           verifyReadable,
@@ -828,13 +831,14 @@ async function readAlbum(
 export async function scanAudioLibrary(root: string, options: ScanOptions = {}): Promise<ScannedAlbum[]> {
   const collectIssue = options.onIssue ?? ((issue: string) => console.warn(issue));
   return issueCollector.run(collectIssue, async () => {
-  const audioRoot = path.resolve(root, AUDIO_DIRECTORY);
+  const audioDirectory = options.audioDirectory ?? AUDIO_DIRECTORY;
+  const audioRoot = path.resolve(root, audioDirectory);
   let entries: Dirent[];
   try {
     entries = await fs.readdir(audioRoot, { withFileTypes: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      warning('.', `cannot read audio root; generated catalog is empty (${error instanceof Error ? error.message : 'I/O error'}).`);
+      warning('.', `cannot read ${audioDirectory} root; generated catalog is empty (${error instanceof Error ? error.message : 'I/O error'}).`);
     }
     return [];
   }
@@ -855,7 +859,7 @@ export async function scanAudioLibrary(root: string, options: ScanOptions = {}):
   const localKeys = new Set(localFolders.map(normalizedPathKey));
   const albumFolders = [...localFolders, ...legacyFolders.filter((folder) => !localKeys.has(normalizedPathKey(folder)))].sort(compareNaturalPath);
   const catalogPath = path.join(audioRoot, PREVIEW_CATALOG);
-  const parsedCatalog = await readJson<unknown>(catalogPath, {}, '.');
+  const parsedCatalog = audioDirectory === AUDIO_DIRECTORY ? await readJson<unknown>(catalogPath, {}, '.') : {};
   const catalog: Record<string, PreviewAlbumReference> = parsedCatalog && typeof parsedCatalog === 'object' && !Array.isArray(parsedCatalog)
     ? parsedCatalog as Record<string, PreviewAlbumReference> : {};
   const catalogByFolder = catalogMatchesByFolder(catalog);
@@ -867,7 +871,7 @@ export async function scanAudioLibrary(root: string, options: ScanOptions = {}):
 
   for (const folder of albumFolders) {
     const catalogMatch = catalogByFolder.get(normalizedPathKey(folder));
-    const album = await readAlbum(audioRoot, folder, legacyFullRootName, catalogMatch, metadataReader, checkReadable, localFolderKeys.has(normalizedPathKey(folder)));
+    const album = await readAlbum(audioRoot, audioDirectory, folder, legacyFullRootName, catalogMatch, metadataReader, checkReadable, localFolderKeys.has(normalizedPathKey(folder)));
     if (!album) continue;
     const previous = ids.get(album.id);
     if (previous) throw new Error(`Duplicate stable album id "${album.id}" for folders "${previous}" and "${folder}".`);

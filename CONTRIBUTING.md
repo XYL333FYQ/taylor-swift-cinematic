@@ -20,6 +20,7 @@ pnpm dev
 ~~~sh
 pnpm test:audio
 pnpm test:music-sync
+pnpm test:music-upload
 pnpm typecheck
 pnpm lint
 pnpm build
@@ -30,7 +31,7 @@ pnpm build
 ## 素材、凭证和隐私
 
 - 不要提交 .env.local、.dev.vars、Cloudflare Token、Access Key、Secret、日志中的凭证或真实个人路径。
-- 不要提交 audio/、.music-cache/、生成的 catalog.json、dist/、node_modules/ 或临时压缩包。
+- 不要提交 audio/、incoming/、uploaded/ 中的音乐和专辑内容；这三个目录只允许提交用于保留空结构的 `.gitkeep`。也不要提交 .music-cache/、生成的 catalog.json、dist/、node_modules/ 或临时压缩包。
 - 不要提交商业音频、歌词、艺人照片、专辑封面或截图，除非已确认有权公开再分发。
 - 代码许可与第三方媒体许可是分开的。仓库没有 LICENSE 时，不要自行添加或宣称某个许可已生效。
 - 如果贡献需要新的图片或音频，请在提交前提供权利来源和明确的再分发授权。

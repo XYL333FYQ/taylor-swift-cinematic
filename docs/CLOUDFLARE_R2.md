@@ -1,6 +1,6 @@
 # 从零配置 Cloudflare R2
 
-R2 在本项目中保存专辑媒体和 catalog.json。浏览器通过公开读取的自定义域名取资源；只有本地 music:sync 等脚本需要写入凭证。
+R2 在本项目中保存专辑媒体和 catalog.json。浏览器通过公开读取的自定义域名取资源；只有本地 `music:sync`、`music:upload` 等脚本需要写入凭证。上传助手沿用下文变量，不新增密钥配置。
 
 ## 1. 创建 Bucket
 
