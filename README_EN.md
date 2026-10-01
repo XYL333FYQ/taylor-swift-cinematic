@@ -19,7 +19,7 @@ An immersive 3D music archive organized around album eras. Visitors can explore 
 - **Synchronized lyrics:** External LRC files and readable synchronized embedded lyrics can highlight and seek with playback.
 - **Chinese and English UI with responsive layouts:** Interface copy supports both languages and adapts to desktop and narrow screens.
 - **Separate media publishing:** Cloudflare Pages serves the website; Cloudflare R2 stores audio, lyrics, album images, and the catalog. Media updates normally do not require rebuilding the site.
-- **Two music workflows:** `music:sync` mirrors a complete local library; `music:upload` adds new albums or tracks from `incoming/` while preserving the cloud catalog.
+- **Two music workflows:** `music:sync` mirrors a complete local library; the interactive `music:upload` wizard selects new albums or individual tracks to append to one existing cloud album, preserving its metadata and tracks.
 
 Unlike a conventional playlist, albums are both visual spaces and narrative entry points. The player and the archive share the same dynamic track data.
 
@@ -89,7 +89,7 @@ Open the local URL printed by Vite, usually http://localhost:5173. Cloning the r
 ## Add your own music
 
 1. Follow the [R2 setup guide](docs/CLOUDFLARE_R2.md) to create your own bucket and public domain. Keep write credentials in local `.env.local` and set the public production `VITE_CATALOG_URL`.
-2. For daily additions, put an album in `incoming/` using the existing album format. Run `pnpm music:check`, `pnpm music:upload --dry-run`, then `pnpm music:upload`. The original folder moves to `uploaded/`; after verifying the cloud media, you may remove that local copy.
+2. For daily additions, put unpacked albums or song files in `incoming/`. Open a terminal there and run `pnpm music:upload` (`pnpm.cmd` in Windows PowerShell). Choose new albums or songs for an existing album, use Space to select items and Enter to continue, review the plan, then type `yes` to upload. New albums retain the current `album.json` format; adding songs uses cloud album metadata without requiring a local manifest or cover. `--dry-run` previews the same wizard; `music:check` checks only local files. Only successfully handled items are archived to `uploaded/` with their relative paths preserved; unselected songs remain in `incoming/`.
 3. For local playback in `pnpm dev`, or for a complete local library used for migration, backup, or rebuilds, put the full albums in `audio/`. Run `pnpm music:sync` only when `audio/` truly contains the intended **complete library**.
 4. Website code and `public/theme/` changes require a Pages build. Updating only album media in R2 does not require a site redeployment.
 

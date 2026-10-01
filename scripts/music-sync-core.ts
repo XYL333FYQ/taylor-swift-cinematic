@@ -75,7 +75,7 @@ async function sourceFile(root: string, url: string, directory: 'audio' | 'incom
   return candidate;
 }
 
-export async function buildCatalog(root: string, albums: CatalogAlbum[], directory: 'audio' | 'incoming' = 'audio'): Promise<{ catalog: string; files: MediaFile[] }> {
+export async function buildCatalog(root: string, albums: CatalogAlbum[], directory: 'audio' | 'incoming' = 'audio', options: { preserveAlbumArtwork?: boolean } = {}): Promise<{ catalog: string; files: MediaFile[] }> {
   const files = new Map<string, MediaFile>();
   const add = async (url: string, key: string): Promise<string> => {
     if (url.replace(/^\.\//, '').startsWith('theme/')) return url;
@@ -93,9 +93,10 @@ export async function buildCatalog(root: string, albums: CatalogAlbum[], directo
     const id = safeId(album.id, 'album id');
     const prefix = `albums/${id}`;
     const coverSource = album.artwork.cover;
-    const cover = await add(coverSource, `${prefix}/artwork/cover${path.extname(coverSource).toLowerCase()}`);
+    const cover = options.preserveAlbumArtwork ? coverSource
+      : await add(coverSource, `${prefix}/artwork/cover${path.extname(coverSource).toLowerCase()}`);
     const presentationSource = album.artwork.presentation;
-    const presentation = presentationSource === coverSource ? cover
+    const presentation = options.preserveAlbumArtwork ? presentationSource : presentationSource === coverSource ? cover
       : await add(presentationSource, `${prefix}/artwork/presentation${path.extname(presentationSource).toLowerCase()}`);
     const tracks = [];
     const trackIds = new Set<string>();

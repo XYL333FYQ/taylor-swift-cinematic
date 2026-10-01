@@ -3,13 +3,14 @@ import { resolve } from 'node:path';
 import { inspectIncoming } from './music-upload-core.ts';
 
 export async function runMusicCheck(root = process.cwd()): Promise<boolean> {
-  const { albums, issues } = await inspectIncoming(root);
+  const { albums, issues, trackImport } = await inspectIncoming(root);
   console.log('[music:check] incoming/ 检查报告');
   for (const issue of issues) console.log(`${issue.level === 'error' ? '❌ error' : '⚠️ warning'} ${issue.album}：${issue.message}`);
   const errors = issues.filter((issue) => issue.level === 'error');
   const globalError = errors.some((issue) => issue.album === 'incoming/' || issue.album === '扫描器');
   const ready = globalError ? [] : albums.filter((album) => !errors.some((issue) => issue.album === album.folder));
-  console.log(`[music:check] 可以上传的专辑（${ready.length}）：`);
+  if (trackImport) console.log('[music:check] 本次是歌曲追加批次；上传时选择云端已有专辑，无需本地 album.json 或专辑封面。');
+  console.log(`[music:check] ${trackImport ? '可以检查通过的歌曲批次' : '可以上传的专辑'}（${ready.length}）：`);
   for (const album of ready) console.log(`  ${album.name.en}（${album.folder}/，${album.tracks.length} 首）`);
   if (errors.length) {
     console.log(`[music:check] 本批次共有 ${errors.length} 个 error；请全部修复后再上传。`);

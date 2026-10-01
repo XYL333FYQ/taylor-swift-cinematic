@@ -100,7 +100,18 @@ cp .env.example .env.local
 
 VITE_CATALOG_URL 以 VITE_ 开头，会成为前端可见配置，只能放公开 URL。R2 写入凭证只能留在同步器运行机器的 .env.local。
 
-## 6. 首次同步与增量验证
+## 6. 首次上传或完整同步
+
+本地只保存待上传内容时，把解压后的新专辑或歌曲放进 `incoming/`，在该目录打开 PowerShell：
+
+~~~powershell
+pnpm.cmd music:upload --dry-run
+pnpm.cmd music:upload
+~~~
+
+向导先让你选择新专辑或给已有专辑追加歌曲，再勾选本次内容。追加歌曲时选择一张云端已有专辑；新专辑沿用现有 `album.json` 格式。查看检查报告后输入 `yes` 才写入，成功内容按原相对路径归档到 `uploaded/`。详见 [上传向导](MUSIC_UPLOAD.md)。
+
+R2 尚无 `catalog.json` 时，可选择“上传新专辑”创建第一张专辑和 Catalog；不需要先运行完整同步。上传向导沿用上述凭证，不会因本地缺少旧歌曲而删除云端内容。
 
 确认本地 audio/ 已放入合法且完整的媒体之后，首次执行：
 

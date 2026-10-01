@@ -2,7 +2,7 @@
 
 本项目把网站程序和曲库媒体分开发布。网站由 Cloudflare Pages 构建；音频、歌词、专辑图片和运行时 Catalog 由 Cloudflare R2 提供。开发服务器会在本地扫描 audio/，正式网站不会把这个本地目录打进 dist。
 
-默认工作区现在只保留三个空目录框架：`audio/` 用于可选的完整本地曲库和本地播放，`incoming/` 放本次待上传专辑，`uploaded/` 保存上传后的原始目录。后两者可在核对 R2 后清空。空 `audio/` 不影响生产网站从 R2 读取音乐。
+默认工作区现在只保留三个空目录框架：`audio/` 用于可选的完整本地曲库和本地播放，`incoming/` 放本次待上传专辑或歌曲，`uploaded/` 保存成功处理的内容及其原相对路径。后两者可在核对 R2 后清空。空 `audio/` 不影响生产网站从 R2 读取音乐。
 
 ## 数据流
 
@@ -11,9 +11,11 @@ flowchart LR
   A["audio/ 本地专辑目录"] --> B["专辑扫描器<br/>plugins/audio-library.ts"]
   B --> C["本地 catalog.json"]
   A --> D["统一同步器<br/>pnpm music:sync"]
-  U["incoming/ 待上传专辑"] --> V["上传助手<br/>pnpm music:upload"]
+  U["incoming/ 待上传专辑或歌曲"] --> V["上传向导：选择方式与内容<br/>pnpm music:upload"]
+  F --> V
   V --> E
   V --> F
+  V --> W["验证成功后按选择范围归档<br/>uploaded/"]
   D --> E["R2 albums/<album-id>/ 媒体对象"]
   D --> F["最后发布 catalog.json"]
   E --> G["R2 自定义公开域名"]
@@ -63,7 +65,7 @@ src/data/media.ts 是统一 URL 边界：
 
 同步器从扫描结果生成公开 Catalog 和所需媒体对象。曲目内嵌的同步歌词会在发布时转成单独的 LRC 对象，不把整份歌词正文写进 catalog.json。媒体使用内容摘要生成修订查询参数；R2 媒体上传并通过 HeadObject 检查后，才发布 Catalog。远端清理由同一状态文件和严格管理的 albums/ 键空间限制。具体门槛见 [音乐同步器](MUSIC_SYNC.md)。
 
-日常 [上传助手](MUSIC_UPLOAD.md)复用扫描器和媒体键生成逻辑，从 R2 当前 Catalog 读取既有专辑，只合并新增专辑或歌曲；同 ID 内容变化需人工选择。上传助手不执行远端删除，也不把不完整的 `incoming/` 当成完整曲库。
+日常 [上传助手](MUSIC_UPLOAD.md)在现有上传核心上提供交互向导，明确选择新专辑或追加歌曲，再勾选相对路径；复用扫描器和媒体键生成逻辑，以 R2 当前 Catalog 为依据合并。追加歌曲保留云端专辑资料及旧歌曲，同 ID 内容变化需人工选择。成功内容按原相对路径归档，部分选择保留未选歌曲，共享配套资源复制并保留原文件。上传助手不执行远端删除，也不把不完整的 `incoming/` 当成完整曲库。
 
 ## 两类发布互不依赖
 

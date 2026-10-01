@@ -12,7 +12,7 @@
 - [项目架构](PROJECT_ARCHITECTURE.md)：本地扫描、远程 Catalog、R2 同步和页面组件的关系。
 - [Cloudflare R2 配置](CLOUDFLARE_R2.md)：Bucket、公开域名、CORS、Token 和环境变量。
 - [音乐同步器](MUSIC_SYNC.md)：增量上传、发布顺序、状态文件、监听和安全清理。
-- [日常上传助手](MUSIC_UPLOAD.md)：从 incoming/ 检查并添加专辑或歌曲，不删除云端媒体。
+- [日常上传助手](MUSIC_UPLOAD.md)：交互选择新专辑或追加歌曲，空格勾选本次内容，查看报告后确认；按选择范围归档，未选歌曲留下，不删除云端媒体。
 - `pnpm music:check`：只检查本地 incoming/；无需 R2 凭证。
 - [Cloudflare Pages 部署](DEPLOYMENT.md)：Git 自动构建与 Wrangler 手动部署。
 

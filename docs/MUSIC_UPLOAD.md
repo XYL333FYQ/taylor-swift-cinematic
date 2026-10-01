@@ -1,10 +1,72 @@
-# 日常专辑上传助手
+# 日常音乐上传向导
 
-`music:upload` 适合本地只保存待上传专辑的工作方式。R2 当前 `catalog.json` 是已有音乐的依据；本地 `incoming/` 只提供本次新资产。工具不会自动删除云端媒体，也不会因本地缺少旧专辑而删除 Catalog 记录。
+`music:upload` 适合本地只保存待上传内容的工作方式。R2 当前 `catalog.json` 是已有音乐的依据；`incoming/` 只提供本次新资产。工具不会自动删除云端媒体，也不会因本地缺少旧歌曲而删除 Catalog 记录。
 
-若本地 `audio/` 保存完整曲库，并希望同步新增、修改、删除，请使用 [`music:sync`](MUSIC_SYNC.md)。两个命令共用扫描规则和 R2 目标锁，但用途不同。
+若 `audio/` 保存完整曲库，需要同步新增、修改、删除，请使用 [`music:sync`](MUSIC_SYNC.md)。两个命令共用扫描规则和 R2 目标锁，用途各自保留。
 
-## 准备文件
+## 开始操作
+
+先按 [R2 配置](CLOUDFLARE_R2.md)在项目根目录的 `.env.local` 填写现有的 `R2_ACCOUNT_ID`、`R2_BUCKET_NAME`、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`；可选 `R2_ENDPOINT`。无需新增环境变量，写入密钥不要放进 Pages 的 `VITE_` 变量。
+
+把 ZIP **先解压**到 `incoming/`。在资源管理器打开这个文件夹，在地址栏输入 `powershell` 并回车，然后运行：
+
+~~~powershell
+pnpm.cmd music:upload
+~~~
+
+从项目根目录、`incoming/` 或它的子目录运行均可。工具显示实际扫描路径，始终使用所属项目的 `incoming/` 和配置。macOS/Linux 使用 `pnpm music:upload`。
+
+首先显示菜单：
+
+~~~text
+请选择上传方式：
+❯ 上传新专辑
+  给已有专辑追加歌曲
+  退出
+~~~
+
+- 上下方向键选择方式或目标专辑，回车确认。
+- 专辑／歌曲列表默认全部未选中：空格勾选，`a` 全选／取消全选，回车继续。
+- 至少勾选一项；有 error 的内容显示具体问题并禁止勾选，warning 不阻止选择。
+- `Ctrl+C` 可退出选择流程；最后的检查报告之后还要输入 `yes`，才会开始写入。
+- 未选内容留在 `incoming/`；其检查错误不会阻止有效的选中内容上传。
+
+## 给已有专辑追加歌曲
+
+无需准备本地专辑 JSON 或封面。解压后的歌曲文件夹直接放在 `incoming/`，音频也可以直接放在这里，一个文件夹可以有多首歌曲。
+
+~~~text
+incoming/
+  新歌曲A/
+    song-a.flac
+    song-a.lrc    （可选）
+    song-a.jpg    （可选）
+  新歌曲B/
+    song-b.flac
+  多首歌曲/
+    song-c.flac
+    song-d.flac
+~~~
+
+1. 运行上传命令，选择“给已有专辑追加歌曲”。
+2. 工具递归扫描并列出歌曲名称和相对路径，勾选本次歌曲。比如四首只选两首。
+3. 从 R2 Catalog 列出的已有专辑中选择**一张**，所有选中歌曲追加到这里。
+4. 查看目标专辑、歌曲、重复检测、error／warning、上传资源与归档位置。
+5. 同 ID 同音频内容自动跳过写入；同 ID 内容不同会逐首要求选择替换或跳过，默认跳过。
+6. 输入 `yes`，上传并校验媒体，合并／发布 Catalog，核对发布结果后归档。
+
+目标专辑名称、日期、颜色、封面和旧歌曲沿用云端资料。不会根据音频的专辑标签或 `歌曲信息.txt` 猜测目标专辑。若本地提供 `album.json` 中的 `tracks` 覆盖配置，歌曲标题、编号与配套资源仍按现有规则解析；本地专辑资料不会覆盖云端资料。音频必须可读取；歌词、单曲图片缺失只 warning。
+
+也可以明确指定已有专辑 ID：
+
+~~~powershell
+pnpm.cmd music:upload --album showgirl
+pnpm.cmd music:upload --dry-run --album showgirl
+~~~
+
+`showgirl` 是示例云端 ID，请换成目标专辑的 ID。交互终端中 `--album` 跳过方式菜单及目标专辑选择，**仍需勾选歌曲，并在正式上传前输入 `yes`**。未知 ID 报错，不创建新专辑。非交互终端仅允许 `--dry-run --album <ID>`，预览整个歌曲批次；正式上传必须在交互终端进行。
+
+## 上传新专辑
 
 ~~~text
 incoming/
@@ -17,32 +79,42 @@ incoming/
       01 song.flac
       01 song.lrc     （可选）
       01 song.jpg     （可选）
+  专辑B/
+    ...
 ~~~
 
-`album.json` 沿用项目现有格式，参见 [字段说明](ALBUM_METADATA.md)。上传助手要求明确填写稳定的 `id`、可显示的 `name`、有效 `releaseDate` 或 `year`、`color`，并找到专辑封面及至少一首可读取音频。这些信息直接影响网页标题、排序、主题与播放。`artist`、`genre`、`description`、`tagline`、`quote`、`colorAccent` 及独立展示图是推荐项；歌词与单曲图片缺失只产生 warning。已填写的字段如果类型不符合现有格式，属于 error。
+1. 选择“上传新专辑”。工具扫描 `incoming/` 的直接子文件夹，展示名称、歌曲数和检查结果。
+2. 勾选本次专辑；不合规范的专辑显示缺失项并禁止勾选。其他专辑保留原处。
+3. 查看最终报告，输入 `yes` 后上传。成功后整张专辑原样归档到 `uploaded/专辑A/`。
 
-## 命令
+`album.json` 沿用当前格式，参见 [字段说明](ALBUM_METADATA.md)。新专辑必须明确提供稳定的 `id`、可显示的 `name`、有效 `releaseDate` 或 `year`、`color`，并有专辑封面和至少一首可读取音频。这些信息影响网页标题、排序、主题与播放。`artist`、`genre`、`description`、`tagline`、`quote`、`colorAccent` 及独立展示图是推荐项；歌词与单曲图片缺失只 warning。已填写的字段如果类型不符合现有格式，属于 error。
 
-先依照 [R2 配置](CLOUDFLARE_R2.md)在本机 `.env.local` 填写现有的 `R2_ACCOUNT_ID`、`R2_BUCKET_NAME`、`R2_ACCESS_KEY_ID`、`R2_SECRET_ACCESS_KEY`；可选 `R2_ENDPOINT`。无需新增环境变量。写入密钥不要放到 Pages 的 `VITE_` 变量中。
+所选专辑 ID 在云端已存在时会停止并提示改用“给已有专辑追加歌曲”，不会把已有专辑当作新专辑覆盖。云端尚无 `catalog.json` 时，可以上传第一张新专辑，自动创建当前前端使用的 `{ "albums": [...] }`；追加歌曲需要至少一张已有云端专辑。
 
-~~~sh
-pnpm music:upload --dry-run
-pnpm music:upload
-pnpm music:check
-~~~
+## 检查与预览命令
 
-Windows PowerShell 可使用 `pnpm.cmd`。`music:check` 只扫描本地 `incoming/` 并输出 error、warning 和可以上传的专辑，不需要 R2 凭证。预览模式会读取 R2 Catalog、检查资源与重复歌曲，列出计划，但不会上传、发布或移动文件。正式运行先显示 error/warning 报告，遇到同 ID 但音频内容不同的歌曲会要求逐首选择 `replace` 或 `skip`，默认跳过；最后输入 `yes` 才开始写入。
+| 命令 | 用途 |
+| --- | --- |
+| `pnpm.cmd music:upload` | 交互选择、查看报告、确认后上传 |
+| `pnpm.cmd music:upload --dry-run` | 同一向导，只读取云端并展示计划，不上传或归档 |
+| `pnpm.cmd music:upload --album <ID>` | 直接进入追加歌曲方式，仍需勾选与确认 |
+| `pnpm.cmd music:check` | 只扫描本地 `incoming/`，无需 R2 凭证，不上传 |
+| `pnpm.cmd music:sync` | 同步完整本地 `audio/` 曲库，包含删除；请确保本地完整 |
 
-## 合并和恢复
+`music:check` 是日常离线检查，不替代上传向导的方式选择或云端重复检测。混有不同类型内容时，正式向导可以分别勾选处理；无需将所有文件夹一起上传。
 
-- 新专辑：添加到云端 Catalog；先上传并验证音频、歌词和图片，最后发布 Catalog。
-- 首次使用：若 R2 尚无 `catalog.json`，上传助手会从本次新专辑创建 `{ "albums": [...] }`，不要求预先运行完整同步。
-- 已有专辑的新歌曲：只追加歌曲；云端已有专辑名称、颜色、图片、旧曲目等保持原样。
-- 同 ID 同内容：跳过，不重复写入。
-- 同 ID 不同内容：必须在交互式终端选择替换；跳过时不改动云端。选择替换后保留旧歌曲的其他元数据，只有新提供的可选资源才会更新。
-- 上传失败：Catalog 不发布，`incoming/` 保留；修复后重新运行，已在 R2 且内容相同的资源会跳过。若 Catalog 并发变化，条件写入会拒绝旧版本，请重新预览并运行。
-- 发布成功：核对 R2 Catalog 后，把 `incoming/Album/` 原样移到忽略 Git 的 `uploaded/Album/`，内部文件与层级保持不变。若 `uploaded/Album/` 已存在，上传前会报 error，避免覆盖旧归档；若移动阶段失败，云端可能已发布，请先查看报告和 R2，再重试。
+## 归档与失败恢复
 
-`music:upload` 不更新 `music:sync` 的本地同步状态。之后若要切回完整同步，请先确保 `audio/` 真正包含完整云端曲库，并留意同步器的删除预览与 `--force` 安全提示。
+- 整张新专辑：原样移动到 `uploaded/专辑目录/`，不改变内部结构，不移入 `audio/`。同名专辑归档目录已存在时提前报 error。
+- 歌曲文件夹全部处理完：配套资源和普通说明文件一起归档，保持原相对路径。
+- 同文件夹只选部分歌曲：只归档已处理音频和专属歌词／图片。未选歌曲及说明、JSON 等文件保留，供下一批继续处理。
+- 与未选歌曲共享的图片或歌词：复制到 `uploaded/`，原文件保留；最后一批成功后可归档剩余资源。
+- 歌曲归档允许合并已有目录：同名同内容文件复用，同名不同内容提前报错，禁止覆盖。
+- 云端已确认音频相同的重复歌曲：可归档。用户选择跳过的变化歌曲留在 `incoming/`。
+- 取消、预览或上传失败：不归档。修复后重新勾选并运行，已在 R2 且内容相同的媒体跳过上传。
+- 媒体上传及校验成功后才发布 Catalog；并发更改通过条件写入拒绝覆盖。重新预览并重试即可。
+- Catalog 发布／归档前再次核对云端版本。归档阶段失败时云端可能已发布，本地可能部分归档；追加歌曲可重新运行，已发布的重复音频会跳过写入，相同归档文件可复用。新专辑若已经发布，先核对 Catalog，再按追加方式处理残留或手动整理归档。
 
-日常云端优先使用时，`audio/` 可以保持为空。上传并核对云端 Catalog 和媒体后，`uploaded/Album/` 是可自行清理的本地副本；删除后请记住 R2 将是这份音乐的唯一副本，按需要另做备份。仓库中的 `.gitkeep` 只保留空目录结构，音乐文件仍被 Git 忽略。
+Catalog、歌曲 ID 生成规则和 `album.json` 格式不变。上传助手不更新完整同步的本地状态。若切回 `music:sync`，请先确保 `audio/` 真正包含完整云端曲库，留意删除预览和 `--force` 安全提示。
+
+日常云端优先使用时，`audio/` 可以为空。`incoming/`、`uploaded/` 的音乐已被 Git 忽略，只有 `.gitkeep` 保留目录框架。上传并核对云端媒体后，可自行清理 `uploaded/` 中的本地副本，并按需要保留备份。

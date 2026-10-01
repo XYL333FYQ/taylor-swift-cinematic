@@ -127,6 +127,7 @@ interface ScannedResources {
   audio: ScannedAudio[];
   lyrics: ScannedLyric[];
   images: ScannedImage[];
+  manifests?: Array<{ relativePath: string; absolutePath: string }>;
 }
 
 interface TrackDraft {
@@ -146,18 +147,20 @@ export interface ScanOptions {
   metadataReader?: AudioMetadataReader;
   /** Allows sync preflight and tests to check that catalog media can be opened. */
   verifyReadableFile?: (absolutePath: string) => Promise<void>;
-  onIssue?: (issue: string) => void;
+  onIssue?: (issue: string, sourcePath?: string) => void;
   /** The upload assistant scans incoming/ with the same album rules. */
   audioDirectory?: 'audio' | 'incoming';
+  /** Restrict album discovery without moving or copying source directories. */
+  folders?: string[];
 }
 
 type ScanIssueLevel = 'warning' | 'critical';
-const issueCollector = new AsyncLocalStorage<(issue: string) => void>();
+const issueCollector = new AsyncLocalStorage<(issue: string, sourcePath?: string) => void>();
 
-function warning(album: string, message: string, level: ScanIssueLevel = 'warning'): void {
+function warning(album: string, message: string, level: ScanIssueLevel = 'warning', sourcePath?: string): void {
   const issue = `[audio-library][${level}] ${album} / ${message}`;
   const collect = issueCollector.getStore();
-  if (collect) collect(issue);
+  if (collect) collect(issue, sourcePath);
   else console.warn(issue);
 }
 
@@ -224,7 +227,7 @@ async function scanResourceTree(
       if ((error as NodeJS.ErrnoException).code === 'ENOENT' && currentDirectory === directory && missingRootAllowed) return;
       {
         const optionalDirectory = relative.split('/').some((part) => ['artwork', 'lyrics', 'lrc'].includes(part.toLowerCase()));
-        warning(albumName, `${relative}: cannot read directory; skipped (${error instanceof Error ? error.message : 'I/O error'}).`, optionalDirectory ? 'warning' : 'critical');
+        warning(albumName, `${relative}: cannot read directory; skipped (${error instanceof Error ? error.message : 'I/O error'}).`, optionalDirectory ? 'warning' : 'critical', relative);
       }
       return;
     }
@@ -244,10 +247,12 @@ async function scanResourceTree(
       const publicPath = [urlPrefix, localPath].filter(Boolean).join('/');
       const publicUrl = encodedPath(publicPath);
 
+      if (entry.name === 'album.json') (results.manifests ??= []).push({ relativePath, absolutePath });
+
       if (SUPPORTED_AUDIO_EXTENSIONS.has(base.extension)) {
         try { await verifyReadable(absolutePath); }
         catch (error) {
-          warning(albumName, `${relativePath}: cannot read required audio; skipped (${error instanceof Error ? error.message : 'I/O error'}).`, 'critical');
+          warning(albumName, `${relativePath}: cannot read required audio; skipped (${error instanceof Error ? error.message : 'I/O error'}).`, 'critical', relativePath);
           continue;
         }
         const parentName = base.directory.split('/').at(-1)?.trim();
@@ -395,7 +400,7 @@ function findManifestResource<T extends ResourceFile>(
   if (exact) return exact;
   const matches = candidates.filter((candidate) => normalizedPathKey(candidate.relativePath) === normalizedPathKey(safePath));
   if (matches.length !== 1) {
-    warning(album, `${purpose} override "${safePath}": ${matches.length ? 'ambiguous path' : 'file not found'}; automatic resolution used.`, issueLevel);
+    warning(album, `${purpose} override "${safePath}": ${matches.length ? 'ambiguous path' : 'file not found'}; automatic resolution used.`, issueLevel, safePath);
     return undefined;
   }
   return matches[0];
@@ -623,6 +628,8 @@ function trackDrafts(
   legacyFull: ScannedResources,
   warn: Warn,
   metadataAlbum?: string,
+  songBatch = false,
+  excludedAlbumImages: string[] = [],
 ): { tracks: CatalogTrack[]; artwork: { url: string; level: 'album' | 'track' | 'fallback' }; albumName: string; year?: string; artist?: string; genre?: string } {
   const allAudio = [...local.audio, ...legacyFull.audio].sort(compareAudioOrder);
   const allLyrics = [...local.lyrics, ...legacyFull.lyrics].sort((a, b) => compareNaturalPath(a.relativePath, b.relativePath));
@@ -630,6 +637,7 @@ function trackDrafts(
   const overrides = uniqueManifestOverrides(manifest, local.audio, local.lyrics, local.images, folder);
   const explicitLyrics = new Set([...overrides.values()].flatMap((value) => value.lyric ? [normalizedPathKey(value.lyric.relativePath)] : []));
   const explicitImages = new Set([...overrides.values()].flatMap((value) => value.image ? [normalizedPathKey(value.image.relativePath)] : []));
+  for (const image of excludedAlbumImages) explicitImages.add(normalizedPathKey(image));
   const explicitAlbumImage = safeManifestPath(manifest.artwork);
   if (explicitAlbumImage) explicitImages.add(normalizedPathKey(explicitAlbumImage));
   const draftFor = (audio: ScannedAudio, kind: 'full' | 'preview', title?: string): TrackDraft => {
@@ -670,7 +678,7 @@ function trackDrafts(
   const imageMatches = matchAlbumResources(activeAudio, allImages.filter((item) =>
     !explicitImages.has(normalizedPathKey(item.relativePath))
     && !(item.directory.toLowerCase() === 'artwork' && ['cover', 'presentation'].includes(normalizeTitle(item.stem)))
-    && !(local.images.includes(item) && !item.directory
+    && !(!songBatch && local.images.includes(item) && !item.directory
       && (rootImages.length === 1 || albumCoverNames.has(normalizeTitle(item.stem))))), 'artwork', warn);
   for (const draft of mergedDrafts) {
     const lyric = lyricMatches.get(draft.resource.relativePath);
@@ -702,7 +710,7 @@ async function readTrackTags(resources: ScannedResources, reader: AudioMetadataR
     try {
       applyMetadata(audio, await reader(audio.absolutePath));
     } catch (error) {
-      warning(album, metadataFileLabel(audio) + `; filename fallback used (${error instanceof Error ? error.message : 'parser error'}).`);
+      warning(album, metadataFileLabel(audio) + `; filename fallback used (${error instanceof Error ? error.message : 'parser error'}).`, 'warning', audio.relativePath);
       applyMetadata(audio, {});
     }
   }
@@ -844,6 +852,7 @@ export async function scanAudioLibrary(root: string, options: ScanOptions = {}):
   }
 
   const localFolders = entries.filter((entry) => entry.isDirectory()
+    && (!options.folders || options.folders.includes(entry.name))
     && !RESERVED_AUDIO_DIRECTORIES.has(entry.name.toLowerCase()))
     .map((entry) => entry.name).sort(compareNaturalPath);
   const legacyFullRootName = findDirectoryName(entries, 'full');
@@ -857,7 +866,8 @@ export async function scanAudioLibrary(root: string, options: ScanOptions = {}):
     }
   }
   const localKeys = new Set(localFolders.map(normalizedPathKey));
-  const albumFolders = [...localFolders, ...legacyFolders.filter((folder) => !localKeys.has(normalizedPathKey(folder)))].sort(compareNaturalPath);
+  const albumFolders = [...localFolders, ...legacyFolders.filter((folder) => !localKeys.has(normalizedPathKey(folder))
+    && (!options.folders || options.folders.includes(folder)))].sort(compareNaturalPath);
   const catalogPath = path.join(audioRoot, PREVIEW_CATALOG);
   const parsedCatalog = audioDirectory === AUDIO_DIRECTORY ? await readJson<unknown>(catalogPath, {}, '.') : {};
   const catalog: Record<string, PreviewAlbumReference> = parsedCatalog && typeof parsedCatalog === 'object' && !Array.isArray(parsedCatalog)
@@ -882,6 +892,53 @@ export async function scanAudioLibrary(root: string, options: ScanOptions = {}):
   return albums.sort((a, b) => (Number(a.releaseDate.slice(0, 4)) || 9999) - (Number(b.releaseDate.slice(0, 4)) || 9999)
     || (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)
     || compareNaturalPath(a.folder, b.folder));
+  });
+}
+
+/** Scan an unpacked song batch without requiring local album metadata or artwork. */
+export async function scanIncomingTracks(
+  root: string,
+  album: { id: string; artist?: string },
+  options: Pick<ScanOptions, 'metadataReader' | 'verifyReadableFile' | 'onIssue'> = {},
+): Promise<CatalogTrack[]> {
+  return issueCollector.run(options.onIssue ?? ((issue) => console.warn(issue)), async () => {
+    const directory = path.join(root, 'incoming');
+    const resources = await scanResourceTree(directory, 'incoming', '', '待追加歌曲',
+      options.verifyReadableFile ?? verifyReadableFile, false);
+    await readTrackTags(resources, options.metadataReader ?? readAudioMetadata, '待追加歌曲');
+    const overrides = new Map<string, TrackOverride[]>();
+    const albumImages: string[] = [];
+    for (const source of (resources.manifests ?? []).sort((a, b) => a.relativePath.split('/').length - b.relativePath.split('/').length)) {
+      const prefix = path.posix.dirname(source.relativePath);
+      const scope = prefix === '.' ? '' : prefix;
+      let manifest: unknown;
+      try { manifest = JSON.parse(await fs.readFile(source.absolutePath, 'utf8')); }
+      catch { warning('待追加歌曲', `${source.relativePath}: album.json 无法读取或 JSON 无效。`, 'critical', scope); continue; }
+      if (!isValidAlbumManifest(manifest)) {
+        warning('待追加歌曲', `${source.relativePath}: album.json 字段类型无效。`, 'critical', scope); continue;
+      }
+      const relative = (value: string) => {
+        const safe = safeManifestPath(value);
+        if (!safe) warning('待追加歌曲', `${source.relativePath}: 资源路径 "${value}" 无效，已忽略。`, 'warning', scope);
+        return safe ? [scope, safe].filter(Boolean).join('/') : undefined;
+      };
+      if (manifest.artwork) { const image = relative(manifest.artwork); if (image) albumImages.push(image); }
+      const localOverrides = new Map<string, TrackOverride[]>();
+      for (const override of manifest.tracks ?? []) {
+        const audio = relative(override.audio);
+        if (!audio) { warning('待追加歌曲', `${source.relativePath}: 歌曲覆盖路径必须在专辑目录内。`, 'critical', scope); continue; }
+        const entries = localOverrides.get(audio) ?? [];
+        entries.push({ ...override, audio,
+          lyrics: override.lyrics ? relative(override.lyrics) : undefined,
+          artwork: override.artwork ? relative(override.artwork) : undefined });
+        localOverrides.set(audio, entries);
+      }
+      for (const [audio, entries] of localOverrides) overrides.set(audio, entries);
+    }
+    const built = trackDrafts(album.id, '待追加歌曲', directory, { id: album.id, artist: album.artist, tracks: [...overrides.values()].flat() },
+      undefined, resources, { audio: [], lyrics: [], images: [] },
+      (message) => warning('待追加歌曲', message), undefined, true, albumImages);
+    return built.tracks;
   });
 }
 
